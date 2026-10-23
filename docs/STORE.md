@@ -1,5 +1,7 @@
 # Store submission kit
 
+> **Not in use.** Because of Chrome Web Store policy, the extension isn't published in the stores; it's distributed as GitHub releases (README → Install, `npm run release`). This kit is kept for reference, and section 6 still applies if you want Mozilla to sign the Firefox add-on as an unlisted (self-distributed) add-on, so that regular Firefox keeps it installed.
+
 Everything needed to publish on the Chrome Web Store and Firefox Add-ons (AMO). Personal use doesn't need any of it: load the unpacked build instead (README).
 
 ## 1. Decide first

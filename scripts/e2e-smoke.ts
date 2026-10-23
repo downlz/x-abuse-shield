@@ -3,6 +3,7 @@
 //
 //   npm run test:e2e            npm run test:e2e:firefox
 //   npm run test:e2e:hosted     npm run test:e2e:hosted -- --firefox
+//   npx tsx scripts/e2e-smoke.ts --firefox --extension=.output/release/x-abuse-shield-<version>.xpi
 //
 // x.com is faked with request interception: each page boots like X does —
 // fetch the API data (via fetch() or XHR), then render the posts — using the
@@ -16,7 +17,9 @@ import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 const root = join(import.meta.dirname, '..');
 const firefox = process.argv.includes('--firefox');
-const extensionPath = join(root, '.output', firefox ? 'firefox-mv2' : 'chrome-mv3');
+/** --extension=<folder, or .xpi for Firefox>: test a release download instead of the build folder. */
+const extensionArg = process.argv.find((arg) => arg.startsWith('--extension='))?.slice('--extension='.length);
+const extensionPath = extensionArg ?? join(root, '.output', firefox ? 'firefox-mv2' : 'chrome-mv3');
 const profileDir = join(root, '.e2e-profile');
 const shotsDir = join(root, 'spike', 'results', firefox ? 'e2e-firefox' : 'e2e');
 /** Firefox gives each install a random moz-extension:// host; a pref pins it so the test can open extension pages. */

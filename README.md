@@ -4,10 +4,20 @@ On-device, multilingual abuse filter for x.com. Scores posts with
 [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
 via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
 
-> **Status:** Phases 1–4 are built, for Chrome (and Brave) and Firefox: word lists, account checks,
+> **Status:** version 0.2.0, for Chrome (and Brave) and Firefox: word lists, account checks,
 > copy-paste detection, strikes and local mutes, the on-device AI model, the review page, and
-> hardening for quotes, reposts, emoji, long posts and dark themes. A store submission kit is in
-> [docs/STORE.md](docs/STORE.md). See [docs/PLAN.md](docs/PLAN.md).
+> hardening for quotes, reposts, emoji, long posts and dark themes. It's distributed here on GitHub,
+> not through the browser stores. See [docs/PLAN.md](docs/PLAN.md).
+
+## Install
+
+Download the latest version from **[Releases](https://github.com/downlz/x-abuse-shield/releases/latest)**:
+
+- **Chrome or Brave:** `x-abuse-shield-<version>-chrome.zip`. Unzip it into a folder you'll keep, open `chrome://extensions` (or `brave://extensions`), switch on **Developer mode**, click **Load unpacked** and choose that folder.
+- **Firefox 128+:** `x-abuse-shield-<version>.xpi`. Open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** and choose the file. The file isn't signed by Mozilla, so regular Firefox removes it on quit; Developer Edition and Nightly can install it permanently with `xpinstall.signatures.required` set to `false`.
+- The `.crx` is for computers where a policy allows the extension: Chrome on Windows and macOS doesn't install `.crx` files from outside the Chrome Web Store.
+
+Each release page has the full instructions and SHA-256 checksums. The AI model is included, so nothing more is downloaded.
 
 ## Goal
 
@@ -73,7 +83,7 @@ Why that matters:
 
 What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import block lists. Block-list tools remain the right choice for that, and they work alongside this extension.
 
-## Setup
+## Build from source
 
 ```sh
 npm install             # also copies ONNX Runtime's wasm into public/ort and generates WXT types
@@ -117,6 +127,17 @@ npx tsx scripts/e2e-smoke.ts --idle   # also checks the idle unload (adds ~2 min
 ```
 
 The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup and API responses. The end-to-end run checks word-list verdicts in `requestAnimationFrame`, i.e. before the browser paints, loads the real model into a fresh profile to check model verdicts and their latency, and saves screenshots to `spike/results/e2e/` (`e2e-firefox/` for Firefox, which can't screenshot extension pages).
+
+## Releasing
+
+```sh
+npm version <x.y.z> --no-git-tag-version   # then commit and push
+npm run release                            # builds .output/release/: Chrome .zip and .crx, Firefox .xpi, SHA256SUMS.txt
+npx tsx scripts/e2e-smoke.ts --firefox --extension=.output/release/x-abuse-shield-<x.y.z>.xpi   # test a download
+npm run release:publish -- --notes docs/releases/v<x.y.z>.md   # GitHub release tagged v<x.y.z> at the current commit
+```
+
+The `.crx` is signed with `~/.x-abuse-shield/crx-key.pem` (or `CRX_KEY`), created on the first release. Back it up and keep it out of the repository: it fixes the extension's id, and every later `.crx` must be signed with it. Publishing uses `GITHUB_TOKEN`, or else the GitHub credential git already has.
 
 ## Calibration
 

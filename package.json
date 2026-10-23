@@ -1,6 +1,6 @@
 {
   "name": "x-abuse-shield",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "private": true,
   "description": "On-device multilingual abuse filter for x.com",
   "type": "module",
@@ -10,6 +10,8 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "release": "tsx scripts/release.ts",
+    "release:publish": "tsx scripts/publish-release.ts",
     "postinstall": "node scripts/copy-ort.mjs && wxt prepare",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
