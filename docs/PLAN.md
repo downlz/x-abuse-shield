@@ -4,7 +4,7 @@ Multilingual, on-device abuse filter for x.com. Chrome and Firefox extensions fi
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **Phase 4 built** — 2026-10-24: Firefox build, hosted-model option, edge cases, follow exemption, store kit ([STORE.md](STORE.md), [PRIVACY.md](PRIVACY.md)). Phase 1 validated on live x.com by the user; the Phase 4 edge cases still need a live check. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
+Status: **v0.2.0 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.0.md)); each download was tested end to end as shipped (the packed `.xpi` exposed a model-loading bug, fixed: Firefox reports the compressed size of files inside an `.xpi`). **Phase 4 built**: Firefox build, hosted-model option, edge cases, follow exemption, store kit ([STORE.md](STORE.md), [PRIVACY.md](PRIVACY.md)). Phase 1 validated on live x.com by the user; the Phase 4 edge cases still need a live check. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
 ---
 
@@ -28,7 +28,7 @@ Status: **Phase 4 built** — 2026-10-24: Firefox build, hosted-model option, ed
 | 1 | Muting | Local mute list + auto-mute after strikes. User-clicked "Mute on X" button in Phase 3. No X API automation |
 | 2 | Default action | Blur with click-to-reveal; collapse for threats and severe toxicity |
 | 3 | Cloud LLM tier | Out of scope. Only network call is the one-time model download |
-| 4 | Distribution | Personal (load unpacked) first; Chrome Web Store-ready later |
+| 4 | Distribution | GitHub releases: Chrome/Brave `.zip` (Load unpacked), signed `.crx`, unsigned Firefox `.xpi`, model included (`npm run release`). Not in the browser stores (Chrome Web Store policy); STORE.md kept for reference |
 | 5 | Languages | Model's 34 + built-in word lists for English, Hindi (Devanagari), Hinglish |
 | 6 | Stack | TypeScript, WXT, React (popup/options), Vitest |
 | 7 | Account data source | Read the user records in X's own API responses as the page loads them (passive, no extra requests). DOM-only fallback (avatar URL, handle) when a record is missing |

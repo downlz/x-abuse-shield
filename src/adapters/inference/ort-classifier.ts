@@ -7,6 +7,7 @@ import { AutoTokenizer, env, type Tensor } from '@huggingface/transformers';
 import * as ort from 'onnxruntime-web/webgpu';
 import type { CategoryScores } from '@/core/engine/categories';
 import { BUNDLED_MODEL_FILE, IN_PLACE_SESSION_OPTIONS, MAX_TOKENS, MODEL_ID } from './model';
+import { readBytes } from './read-bytes';
 import { configureWebRuntime, labelOrder, type ToxicityClassifier } from './toxicity-classifier';
 
 /** Cache API bucket for a hosted .ort model (the tokenizer goes in Transformers.js's own cache). */
@@ -95,19 +96,3 @@ async function readCached(url: string, onProgress?: (percent: number) => void): 
   return bytes;
 }
 
-async function readBytes(url: string, onProgress?: (percent: number) => void): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Couldn't read the model (${response.status})`);
-  const total = Number(response.headers.get('content-length'));
-  if (!response.body || !total || !onProgress) return new Uint8Array(await response.arrayBuffer());
-  const bytes = new Uint8Array(total);
-  const reader = response.body.getReader();
-  let loaded = 0;
-  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-    if (loaded + chunk.value.byteLength > total) throw new Error('The model file is larger than its declared size');
-    bytes.set(chunk.value, loaded);
-    loaded += chunk.value.byteLength;
-    onProgress(Math.floor((loaded / total) * 100));
-  }
-  return bytes;
-}

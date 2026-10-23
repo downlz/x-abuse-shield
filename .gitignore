@@ -14,3 +14,6 @@ tests/fixtures/x/*.png
 
 # Your own labelled posts for calibration — keep local only
 calibration/posts.jsonl
+
+# Extension signing keys (keep them outside the repo)
+*.pem
