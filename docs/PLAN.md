@@ -4,7 +4,7 @@ Multilingual, on-device abuse filter for x.com. Chrome extension first, mobile l
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **Phase 3 built** — 2026-10-23. Phase 1 validated on live x.com by the user; ~850 MB model memory accepted for now. Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
+Status: **Phase 3 built** — 2026-10-23. Phase 1 validated on live x.com by the user. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
 ---
 
@@ -213,7 +213,7 @@ x-abuse-shield/
 ### Phase 2 — Model engine ✅ built (real labelled data pending)
 - ✅ Offscreen inference: one model for all tabs, batches of 8, LRU cache by text. "Visible-first" is done as **newest request first** — while scrolling, the posts on screen now are scored before ones scrolled past — so the content script never forces a layout to measure visibility
 - ✅ Model lifecycle: loads on the first score request (or right after the download is approved), unloads after idle minutes (1-minute alarm; verified: unloaded 115 s after a 1-minute idle setting); word-list-only by default on devices reporting ≤ 4 GB
-- ⚠️ Memory reduction: target < 700 MB **not met**. Tokenizer ≈ 180 MB; no session option (arena, graph optimisation, prepacking) changes the ~850 MB. Next options: ONNX Runtime `.ort` format hosted by us, or a smaller model. See SPIKE-REPORT
+- ✅ Memory reduction (after Phase 3): **+507 MB instead of +850 MB** (target < 700 MB met). The model ships with the extension in ONNX Runtime's `.ort` format (`npm run model:build`, converted locally with onnxruntime-node — no Python) and runs in place: `use_ort_model_bytes_for_initializers` + `disable_prepacking`, with onnxruntime-web patched at build time to keep the model bytes (scripts/ort-in-place-plugin.ts; the build fails if a new onnxruntime-web changes the patched code). Same speed, scores within 1e-6, load 4 s after "Turn on" instead of a ~60 s download. The extension grows to ~331 MB on disk. Without `model:build` it falls back to downloading the `.onnx` (850 MB). Tokenizer (~180 MB) is the next-largest cost (vocabulary trimming would shrink both)
 - ✅ First-run download only after approval, with progress; model status in popup and settings
 - ✅ Per-category sliders (switch the preset to Custom), non-English offset, pre-blur option
 - ✅ Suspicion offsets on model thresholds (from Phase 1); near-duplicate matching with SimHash over **character 4-grams** (word 3-grams are too coarse for tweet-length text). Threshold 12 of 64 bits, measured: rewrites 5–15, unrelated same-topic replies 18–29
@@ -241,6 +241,21 @@ x-abuse-shield/
 - Firefox desktop build
 - Optional Chrome Web Store kit
 
+### Planned improvements
+
+**Vocabulary trimming (memory and size).** The model's vocabulary table is 256,000 tokens × 384 values ≈ 98M of its ~140M parameters, and most tokens belong to languages we don't need. Keep only the tokens that occur in the chosen languages and cut the rest.
+
+| | Now (in-place `.ort`) | Estimated after trimming |
+|---|---|---|
+| Model memory while loaded | +507 MB | ~200–300 MB |
+| Tokenizer memory | ~180 MB of that | ~30 MB |
+| Model file shipped | 256 MB `.ort` + 33 MB tokenizer | ~60–90 MB total |
+
+- **Steps (one-time, offline):** count which tokens occur in English, Hindi and Hinglish text (the model's training set `Horizon-Labs/civil-comments-multilingual` plus labelled posts); keep those (typically 30,000–60,000) plus special tokens; slice the embedding matrix and rebuild the tokenizer with remapped ids; re-export, re-quantize and convert to `.ort` as now; check scores against the current model on the calibration set before switching
+- **Needs:** a Python environment for the conversion (PyTorch, Transformers, ONNX tooling); Apache-2.0 allows modifying and redistributing the model
+- **Decisions when we start:** which languages to keep (anything dropped loses accuracy — Urdu, Bengali, Marathi, Tamil…?); whether to keep the full model as a Settings option for other languages
+- **Risk:** accuracy on kept languages should be unchanged (published vocabulary-trimming results), but it must be verified with `npm run calibrate`
+
 ## 9. Quality budgets
 - Content-script work < 2 ms per post, account and coordination tiers included
 - Word-list, account and coordination verdicts before paint
@@ -252,7 +267,9 @@ x-abuse-shield/
 | Risk | Mitigation |
 |---|---|
 | X changes its markup | Selectors in one file, health check, fixture tests |
-| 289 MB download; +850–870 MB resident while loaded, 1.2–1.9 GB peak during load (Phase 0) | Consent + one-time cache; word lists work meanwhile; load only with x.com open, unload when idle; lexicon-only mode |
+| Model memory: +507 MB while loaded, 0.84 GB peak (in-place `.ort`; +850 MB / 1.2–1.9 GB for the `.onnx`) | Opt-in; word lists work meanwhile; load only with x.com open, unload when idle; lexicon-only mode |
+| The in-place patch to onnxruntime-web (pinned dev build) | Build fails if the patched code changes; unit test on the pinned source; re-measure (`spike-browser --variant=bundled-ort`) before upgrading |
+| Shipping the model makes the extension ~331 MB | Fine for personal use; for the Chrome Web Store, host the `.ort` and download it instead (the download path already exists) |
 | Weak Hindi/Hinglish (confirmed in Phase 0) | Word list as primary detector, corroboration rule, custom words |
 | False positives | Blur default, review log, feedback, allowlist |
 | X changes its API response shape | Field paths in one file, field health check, API-response fixtures, DOM-only fallback |

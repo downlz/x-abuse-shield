@@ -1,5 +1,6 @@
-import { cachedModelFileCount, MODEL_FILE_COUNT } from '@/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, cachedModelFileCount, MODEL_FILE_COUNT } from '@/adapters/inference/model';
 import { ModelService } from '@/adapters/inference/model-service';
+import { loadBundledClassifier } from '@/adapters/inference/ort-classifier';
 import { loadToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
 import { isMessage, type Message, type Reply, type ScoreReply } from '@/shared/messages';
 import { runSpike } from '@/spike/run-spike';
@@ -10,8 +11,24 @@ function send(message: Message) {
   void browser.runtime.sendMessage(message).catch(() => undefined);
 }
 
+const modelBaseUrl = new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href;
+
 const service = new ModelService(
   async (report) => {
+    if (__BUNDLED_MODEL__) {
+      // Shipped with the extension: nothing to download, and it runs in place (~360 MB less memory).
+      let reported = 0;
+      report({ state: 'loading', downloading: false, progress: 0 });
+      return loadBundledClassifier({
+        modelBaseUrl,
+        ortBaseUrl,
+        onProgress: (progress) => {
+          if (progress - reported < 10) return;
+          reported = progress;
+          report({ state: 'loading', downloading: false, progress });
+        },
+      });
+    }
     const downloading = (await cachedModelFileCount()) < MODEL_FILE_COUNT;
     report({ state: 'loading', downloading, progress: 0 });
     let reported = 0;

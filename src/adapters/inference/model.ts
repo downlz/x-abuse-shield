@@ -6,6 +6,31 @@ export const MODEL_DTYPE = 'q8';
 /** The model was trained on sequences of up to 256 tokens. */
 export const MAX_TOKENS = 256;
 
+/**
+ * The same model in ONNX Runtime's .ort format, built by `npm run model:build`
+ * into public/models/<MODEL_ID>/ and shipped with the extension. It runs in
+ * place: ~294 MB instead of ~657 MB for the .onnx (measured on the same runtime).
+ */
+export const BUNDLED_MODEL_FILE = 'model.ort';
+export const BUNDLED_MODEL_DIR = 'models/';
+
+/**
+ * Run the weights straight from the .ort bytes (no second copy) and don't
+ * keep re-laid-out copies for matrix multiplies (no pre-packing). Measured on
+ * the WebAssembly runtime in Node: +294 MB vs +657 MB for the .onnx; scores
+ * within 7e-6. `use_ort_model_bytes_for_initializers` needs the ONNX Runtime
+ * patch in scripts/ort-in-place-plugin.ts, which keeps those bytes alive.
+ */
+export const IN_PLACE_SESSION_OPTIONS = {
+  extra: {
+    session: {
+      use_ort_model_bytes_directly: '1',
+      use_ort_model_bytes_for_initializers: '1',
+      disable_prepacking: '1',
+    },
+  },
+};
+
 /** Transformers.js's default Cache API bucket (env.cacheKey). Read here without importing the library. */
 export const MODEL_CACHE_NAME = 'transformers-cache';
 
