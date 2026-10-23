@@ -100,6 +100,16 @@ describe('home · For you', () => {
     expect(strikes.map((s) => [s.handle, s.postId])).toEqual([['srihars47664037', '2002']]);
   });
 
+  it('quotes the matched word on hidden posts only when the setting is on', () => {
+    setup('/home').pipeline.attach();
+    expect(placeholderText('2002')).toContain('insult · word list');
+    expect(placeholderText('2002').toLowerCase()).not.toContain('chutiya');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/home', { settings: { display: { showMatchedWords: true } } }).pipeline.attach();
+    expect(placeholderText('2002')).toContain('insult · word list: “chutiya”');
+  });
+
   it('never filters the logged-in user’s own posts', () => {
     setup('/home').pipeline.attach();
     expect(treatments()['2004']).toBeNull();
@@ -172,7 +182,8 @@ describe('thread replies', () => {
     const { pipeline, strikes } = setup(path);
     pipeline.attach();
     expect(treatments()).toMatchObject({ '3004': 'blur', '3005': 'blur', '3006': 'blur' });
-    expect(placeholderText('3005')).toContain('pagal');
+    expect(placeholderText('3005')).toContain('insult · word list from a highly suspicious account');
+    expect(placeholderText('3005')).not.toContain('pagal');
     expect(new Set(strikes.map((s) => s.handle))).toEqual(new Set(['brigade_one', 'brigade_two', 'brigade_three']));
   });
 

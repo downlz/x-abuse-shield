@@ -3,7 +3,7 @@ import type { Settings } from '@/core/config/schema';
 import { CopyTracker } from '@/core/coordination/copy-tracker';
 import { fingerprint } from '@/core/coordination/fingerprint';
 import type { Category, CategoryScores } from '@/core/engine/categories';
-import { decide, type ScoringConfig, type Verdict } from '@/core/engine/decide';
+import { decide, withoutMatchedWords, type ScoringConfig, type Verdict } from '@/core/engine/decide';
 import { Lexicon } from '@/core/lexicon/match';
 import { activeMute, type MuteState, type Strike } from '@/core/mute/mutes';
 import type { ReviewEntry } from '@/core/review/log';
@@ -359,10 +359,12 @@ export class ContentPipeline {
         : null;
     }
     const what = verdict.categories.map((c) => CATEGORY_LABELS[c]).join(', ') || 'copy-paste reply';
+    const reason = verdict.reasons[0];
+    const shown = reason && !this.settings.display.showMatchedWords ? withoutMatchedWords(reason) : reason;
     return {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
       label: 'Hidden by Abuse Shield',
-      detail: verdict.reasons[0] ? `${what} · ${verdict.reasons[0]}` : what,
+      detail: shown ? `${what} · ${shown}` : what,
       actions: ['not-abusive', 'mute', 'mute-on-x'],
     };
   }

@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   preset: 'balanced',
   customThresholds: { ...PRESETS.balanced },
   actions: { mild: 'blur', severe: 'collapse', muted: 'collapse' },
+  display: { showMatchedWords: false },
   scopes: { forYou: true, following: true, replies: true, notifications: true, focalPost: false },
   lexicon: { en: true, hi: true, hinglish: true, customBlock: [], customAllow: [] },
   allowlist: [],

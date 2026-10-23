@@ -117,6 +117,13 @@ function General({ settings, update }: { settings: Settings; update: Update }) {
       <ActionField label="Threats and severe abuse" value={settings.actions.severe} onChange={(severe) => update((s) => ({ ...s, actions: { ...s.actions, severe } }))} />
       <ActionField label="Posts by muted accounts" value={settings.actions.muted} onChange={(muted) => update((s) => ({ ...s, actions: { ...s.actions, muted } }))} />
       <p className="hint">Blur and Collapse keep a “Show” button. Remove hides the post completely.</p>
+      <Check
+        checked={settings.display.showMatchedWords}
+        onChange={(showMatchedWords) => update((s) => ({ ...s, display: { ...s.display, showMatchedWords } }))}
+        hint="e.g. word list: “idiot” instead of just word list"
+      >
+        Show the matched words on hidden posts
+      </Check>
     </section>
   );
 }

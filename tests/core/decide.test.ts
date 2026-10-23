@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import type { CategoryScores } from '@/core/engine/categories';
-import { decide, effectiveThreshold, type DecisionInput, type ScoringConfig } from '@/core/engine/decide';
+import { decide, effectiveThreshold, withoutMatchedWords, type DecisionInput, type ScoringConfig } from '@/core/engine/decide';
 import { PRESETS } from '@/core/engine/presets';
 import type { LexiconHit } from '@/core/lexicon/types';
 
@@ -92,6 +92,17 @@ describe('model thresholds with suspicion (PLAN §5.3)', () => {
 
   it('ignores suppressed categories', () => {
     expect(decide(input({ model: scores({ threat: 0.74 }), suppressed: ['threat'] }), balanced).flagged).toBe(false);
+  });
+});
+
+describe('withoutMatchedWords', () => {
+  it.each([
+    ['word list: “idiot” + model toxicity 0.75', 'word list + model toxicity 0.75'],
+    ['word list: “pagal” from a highly suspicious account', 'word list from a highly suspicious account'],
+    ['word list: “तुझे घर आकर मार”', 'word list'],
+    ['model: insult 0.82 ≥ 0.70', 'model: insult 0.82 ≥ 0.70'],
+  ])('%s', (reason, shown) => {
+    expect(withoutMatchedWords(reason)).toBe(shown);
   });
 });
 

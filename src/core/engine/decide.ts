@@ -48,19 +48,19 @@ export function decide(input: DecisionInput, config: ScoringConfig): Verdict {
     if (config.thresholds[hit.category] === null) continue;
     if (hit.strength === 'strong') {
       categories.add(hit.category);
-      reasons.push(`word list: “${hit.matched}”`);
+      reasons.push(wordListReason(hit));
       continue;
     }
     if (config.mildWordsRepliesOnly && !input.directed) continue;
     if (level === 'high') {
       categories.add(hit.category);
-      reasons.push(`word list: “${hit.matched}” from a highly suspicious account`);
+      reasons.push(`${wordListReason(hit)} from a highly suspicious account`);
       continue;
     }
     const needed = config.corroboration[level];
     if (input.model && input.model.toxicity >= needed) {
       categories.add(hit.category);
-      reasons.push(`word list: “${hit.matched}” + model toxicity ${input.model.toxicity.toFixed(2)}`);
+      reasons.push(`${wordListReason(hit)} + model toxicity ${input.model.toxicity.toFixed(2)}`);
     }
   }
 
@@ -86,6 +86,16 @@ export function decide(input: DecisionInput, config: ScoringConfig): Verdict {
     severe: categories.has('threat') || categories.has('severe_toxicity'),
     reasons,
   };
+}
+
+/** `word list: “idiot”` — withoutMatchedWords() removes the quoted part. */
+function wordListReason(hit: LexiconHit): string {
+  return `word list: “${hit.matched}”`;
+}
+
+/** For display on x.com: `word list: “idiot” + model toxicity 0.75` → `word list + model toxicity 0.75`. */
+export function withoutMatchedWords(reason: string): string {
+  return reason.replace(/word list: “[^”]*”/g, 'word list');
 }
 
 /** Categories at or above their plain threshold — model only, no offsets (used by the spike report). */

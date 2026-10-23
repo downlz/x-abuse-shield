@@ -18,6 +18,10 @@ export interface Settings {
     /** Posts by muted authors. */
     muted: Action;
   };
+  display: {
+    /** Quote the matched words on hidden posts ("word list: “idiot”") instead of just "word list". */
+    showMatchedWords: boolean;
+  };
   scopes: {
     forYou: boolean;
     following: boolean;
