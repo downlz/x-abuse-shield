@@ -39,6 +39,10 @@ describe('strong hits flag on their own', () => {
     ['मादरचोद, दिमाग खराब मत कर।', 'मादरचोद'],
     ['चुप कर कमीने, तेरी औकात क्या है?', 'कमीने'],
     ['हरामखोर, शर्म नहीं आती तुझे ऐसी बातें करते हुए?', 'हरामखोर'],
+    // Live x.com replies missed in Phase 1 testing.
+    ['Bsdwale @rahulkanwal gaand mei ghus ja', 'bsdwale'],
+    ['Bsdwale @rahulkanwal gaand mei ghus ja', 'gand mei'],
+    ['Haarami hai ye', 'harami'],
     // Disguises.
     ['chutiyaaaa', 'chutiya'],
     ['fuuuuck you', 'fuck you'],
@@ -67,6 +71,7 @@ describe('mild hits need corroboration', () => {
     ['Abe gadhe, kuch bhi bakwas karta rehta hai.', 'gadhe'],
     ['Kisi ne mujhe pagal bola, but I don’t care.', 'pagal'],
     ['साले कुत्ते, अपनी बकवास बंद कर।', 'कुत्ते'],
+    ['Nallo Ki Fauj hai bhaaai', 'nallo'],
   ])('%s', (text, term) => {
     expect(strong(text)).toEqual([]);
     expect(mild(text).map((h) => h.term)).toContain(term);
@@ -92,6 +97,9 @@ describe('no false matches', () => {
     "I'm a proud gay man and I'm getting married next month 🎉",
     'घर हमारा है, सब ठीक है',
     'Arre yaar, tum toh kamaal ho! Bahut mazaa aaya.',
+    'Partiamo dalla stazione alle otto',
+    // Implicit abuse with no bad words is the model's job (Phase 2).
+    'Next shot me joota  muh me hoga iske..🙂',
   ])('%s', (text) => {
     expect(all.match(text).hits).toEqual([]);
   });

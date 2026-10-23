@@ -1,13 +1,20 @@
 import { migrateSettings } from '@/core/config/migrate';
 import type { Settings } from '@/core/config/schema';
-import type { MuteState } from '@/core/mute/mutes';
+import { parseMuteState, type MuteState } from '@/core/mute/mutes';
+import type { ReviewEntry } from '@/core/review/log';
 
 /**
  * chrome.storage.local layout. Content scripts only read; the background
- * service worker is the single writer for mutes, strikes and stats, so
- * concurrent tabs can't lose each other's updates.
+ * service worker is the single writer for mutes, strikes, stats, the review
+ * log and overrides, so concurrent tabs can't lose each other's updates.
  */
-export const KEYS = { settings: 'settings', muteState: 'muteState', stats: 'stats' } as const;
+export const KEYS = {
+  settings: 'settings',
+  muteState: 'muteState',
+  stats: 'stats',
+  reviewLog: 'reviewLog',
+  overrides: 'overrides',
+} as const;
 
 export interface DailyStats {
   /** YYYY-MM-DD, local time. */
@@ -15,6 +22,13 @@ export interface DailyStats {
   flagged: number;
   muted: number;
 }
+
+/** Your corrections: posts marked "not abusive" stay visible. */
+export interface Overrides {
+  notAbusive: string[];
+}
+
+const OVERRIDES_LIMIT = 2000;
 
 export const EMPTY_MUTE_STATE: MuteState = { mutes: [], strikes: [] };
 
@@ -45,12 +59,30 @@ export async function saveStats(stats: DailyStats): Promise<void> {
   await browser.storage.local.set({ [KEYS.stats]: stats });
 }
 
+export async function loadReviewLog(): Promise<ReviewEntry[]> {
+  const stored = (await browser.storage.local.get(KEYS.reviewLog))[KEYS.reviewLog];
+  return Array.isArray(stored) ? (stored as ReviewEntry[]) : [];
+}
+
+export async function saveReviewLog(log: ReviewEntry[]): Promise<void> {
+  await browser.storage.local.set({ [KEYS.reviewLog]: log });
+}
+
+export async function loadOverrides(): Promise<Overrides> {
+  return toOverrides((await browser.storage.local.get(KEYS.overrides))[KEYS.overrides]);
+}
+
+export async function saveOverrides(overrides: Overrides): Promise<void> {
+  await browser.storage.local.set({ [KEYS.overrides]: { notAbusive: overrides.notAbusive.slice(-OVERRIDES_LIMIT) } });
+}
+
+export function toOverrides(value: unknown): Overrides {
+  const notAbusive = (value as Partial<Overrides> | undefined)?.notAbusive;
+  return { notAbusive: Array.isArray(notAbusive) ? notAbusive.filter((id) => typeof id === 'string') : [] };
+}
+
 export function toMuteState(value: unknown): MuteState {
-  const state = value as Partial<MuteState> | undefined;
-  return {
-    mutes: Array.isArray(state?.mutes) ? state.mutes : [],
-    strikes: Array.isArray(state?.strikes) ? state.strikes : [],
-  };
+  return parseMuteState(value);
 }
 
 export function localDay(now = new Date()): string {

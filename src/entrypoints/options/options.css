@@ -3,3 +3,9 @@ section.card { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .field > span:first-child { min-width: 180px; }
 .hint { font-size: 13px; color: var(--muted); }
+.slider-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(120px, 1fr) 44px 56px; align-items: center; gap: 8px 12px; }
+.slider-row input[type='range'] { width: 100%; }
+@media (max-width: 560px) {
+  .slider-row { grid-template-columns: 1fr 44px 56px; }
+  .slider-row > span:first-child { grid-column: 1 / -1; }
+}

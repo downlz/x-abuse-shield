@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import type { CategoryScores } from '@/core/engine/categories';
-import { decide, effectiveThreshold, type DecisionInput, type ScoringConfig } from '@/core/engine/decide';
+import { decide, effectiveThreshold, withoutMatchedWords, type DecisionInput, type ScoringConfig } from '@/core/engine/decide';
 import { PRESETS } from '@/core/engine/presets';
 import type { LexiconHit } from '@/core/lexicon/types';
 
@@ -45,13 +45,20 @@ describe('word-list hits', () => {
   });
 
   it('needs corroboration for mild hits', () => {
-    expect(decide(input({ lexiconHits: [hit('mild')] }), balanced).flagged).toBe(false);
-    expect(decide(input({ lexiconHits: [hit('mild')], model: scores({ toxicity: 0.42 }) }), balanced).flagged).toBe(true);
-    expect(decide(input({ lexiconHits: [hit('mild')], model: scores({ toxicity: 0.3 }) }), balanced).flagged).toBe(false);
+    const reply = { lexiconHits: [hit('mild')], directed: true };
+    expect(decide(input(reply), balanced).flagged).toBe(false);
+    expect(decide(input({ ...reply, model: scores({ toxicity: 0.42 }) }), balanced).flagged).toBe(true);
+    expect(decide(input({ ...reply, model: scores({ toxicity: 0.3 }) }), balanced).flagged).toBe(false);
     // Medium suspicion lowers the bar, but only for replies and mentions.
     const medium = { lexiconHits: [hit('mild')], model: scores({ toxicity: 0.3 }), suspicion: 'medium' as const };
     expect(decide(input({ ...medium, directed: true }), balanced).flagged).toBe(true);
     expect(decide(input(medium), balanced).flagged).toBe(false);
+  });
+
+  it('ignores mild words in standalone posts ("this is fucking amazing")', () => {
+    const standalone = { lexiconHits: [hit('mild', 'obscene')], model: scores({ toxicity: 0.62, obscene: 0.64 }) };
+    expect(decide(input(standalone), balanced).flagged).toBe(false);
+    expect(decide(input(standalone), { ...balanced, mildWordsRepliesOnly: false }).flagged).toBe(true);
   });
 
   it('flags mild hits from highly suspicious accounts only when directed', () => {
@@ -85,6 +92,17 @@ describe('model thresholds with suspicion (PLAN §5.3)', () => {
 
   it('ignores suppressed categories', () => {
     expect(decide(input({ model: scores({ threat: 0.74 }), suppressed: ['threat'] }), balanced).flagged).toBe(false);
+  });
+});
+
+describe('withoutMatchedWords', () => {
+  it.each([
+    ['word list: “idiot” + model toxicity 0.75', 'word list + model toxicity 0.75'],
+    ['word list: “pagal” from a highly suspicious account', 'word list from a highly suspicious account'],
+    ['word list: “तुझे घर आकर मार”', 'word list'],
+    ['model: insult 0.82 ≥ 0.70', 'model: insult 0.82 ≥ 0.70'],
+  ])('%s', (reason, shown) => {
+    expect(withoutMatchedWords(reason)).toBe(shown);
   });
 });
 

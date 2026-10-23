@@ -7,6 +7,8 @@ export const SPIKE_VARIANTS = {
   'no-arena': { enableCpuMemArena: false, enableMemPattern: false },
   /** No graph optimisation, ruling out constant-folded (dequantised) weights. */
   'no-graph-opt': { graphOptimizationLevel: 'disabled' },
+  /** Don't keep a second, re-laid-out copy of the weights for faster matrix multiplies. */
+  'no-prepack': { extra: { session: { disable_prepacking: '1' } } },
 } satisfies Record<string, SessionOptions>;
 
 export type SpikeVariant = keyof typeof SPIKE_VARIANTS;

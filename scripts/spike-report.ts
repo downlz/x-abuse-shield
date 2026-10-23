@@ -163,6 +163,13 @@ push(
     return `| ${name} | \`${settings}\` | ${cells.join(' | ')} | ${ms(session.runs[0]!.batch.perPostMs)} |`;
   }),
   '',
+  '### What the memory is (Phase 2 investigation)',
+  '',
+  '- The tokenizer (256k-token vocabulary) takes ~180 MB: 149 MB of JS heap + 32 MB external, measured in Node (same V8).',
+  '- No ONNX Runtime session option changes the total: CPU arena, graph optimisation and weight prepacking were all tried above.',
+  '- Most likely remainder (not directly observed): the 268 MB model copied into WebAssembly memory plus the weights parsed from it. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.',
+  '- Getting below the 700 MB target would need the model in ONNX Runtime’s own `.ort` format, loaded in place and hosted by us, or a smaller model. Until then the mitigation is loading only while x.com is open and unloading after idle minutes.',
+  '',
   '## Output parity',
   '',
   `- Browser vs Node reference: max |diff| ${browserVsNode.max.toFixed(5)}, mean ${browserVsNode.mean.toFixed(6)}`,

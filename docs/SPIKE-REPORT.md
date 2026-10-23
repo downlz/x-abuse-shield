@@ -9,7 +9,7 @@ Transformers.js 4.3.1 · onnxruntime-web 1.31.0-dev.20260914-8d85527a0 · cross-
 |---|---|---|
 | Batched latency ≤ 150 ms/post | 32 ms | ✅ |
 | Loads from cache after a browser restart | 4 files cached, loaded in 2.8 s | ✅ |
-| Memory acceptable | +850 MB–868 MB steady while loaded (6 runs); back to 47 MB–61 MB within 60 s of unloading | ⚠️ heavy — unload when idle |
+| Memory acceptable | +850 MB–868 MB steady while loaded (8 runs); back to 47 MB–61 MB within 60 s of unloading | ⚠️ heavy — unload when idle |
 | Browser output matches Node reference | max diff 0.0000 | ✅ |
 
 ## Loading
@@ -49,6 +49,15 @@ buffers lazily, so the 5 s reading varies by more than 1 GB between runs.
 | no-arena #1 | `{enableCpuMemArena:false,enableMemPattern:false}` | 43 MB | 1,186 MB | 897 MB | 906 MB | 50 MB | 30 ms |
 | no-arena #2 | `{enableCpuMemArena:false,enableMemPattern:false}` | 40 MB | 1,184 MB | 896 MB | 904 MB | 47 MB | 29 ms |
 | no-graph-opt #1 | `{graphOptimizationLevel:disabled}` | 41 MB | 1,189 MB | 893 MB | 902 MB | 47 MB | 23 ms |
+| no-prepack #1 | `{extra:{session:{disable_prepacking:1}}}` | 41 MB | 1,193 MB | 892 MB | 902 MB | 49 MB | 24 ms |
+| no-prepack #2 | `{extra:{session:{disable_prepacking:1}}}` | 44 MB | 1,208 MB | 896 MB | 906 MB | 52 MB | 19 ms |
+
+### What the memory is (Phase 2 investigation)
+
+- The tokenizer (256k-token vocabulary) takes ~180 MB: 149 MB of JS heap + 32 MB external, measured in Node (same V8).
+- No ONNX Runtime session option changes the total: CPU arena, graph optimisation and weight prepacking were all tried above.
+- Most likely remainder (not directly observed): the 268 MB model copied into WebAssembly memory plus the weights parsed from it. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.
+- Getting below the 700 MB target would need the model in ONNX Runtime’s own `.ort` format, loaded in place and hosted by us, or a smaller model. Until then the mitigation is loading only while x.com is open and unloading after idle minutes.
 
 ## Output parity
 

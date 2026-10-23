@@ -10,3 +10,6 @@ spike/results/
 
 # Real X screenshots (contain third-party handles) — keep local only
 tests/fixtures/x/*.png
+
+# Your own labelled posts for calibration — keep local only
+calibration/posts.jsonl

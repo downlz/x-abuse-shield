@@ -2,10 +2,11 @@ import { activeThresholds } from '@/core/config/migrate';
 import type { Settings } from '@/core/config/schema';
 import { CopyTracker } from '@/core/coordination/copy-tracker';
 import { fingerprint } from '@/core/coordination/fingerprint';
-import type { Category } from '@/core/engine/categories';
-import { decide, type ScoringConfig, type Verdict } from '@/core/engine/decide';
+import type { Category, CategoryScores } from '@/core/engine/categories';
+import { decide, withoutMatchedWords, type ScoringConfig, type Verdict } from '@/core/engine/decide';
 import { Lexicon } from '@/core/lexicon/match';
 import { activeMute, type MuteState, type Strike } from '@/core/mute/mutes';
+import type { ReviewEntry } from '@/core/review/log';
 import { assessAccount, type AccountRecord, type Assessment } from '@/core/signals/suspicion';
 import type { RecordsPayload } from '@/adapters/x-api/bridge';
 import { isDefaultAvatarUrl, type PostRecord } from '@/adapters/x-api/fields';
@@ -19,9 +20,18 @@ export interface PipelineDeps {
   doc: Document;
   path: () => string;
   now: () => number;
-  onFlagged: (strike: Strike) => void;
+  /** A post was newly hidden. `strike` is set when it counts against its author. */
+  onFlagged: (entry: ReviewEntry, strike?: Strike) => void;
   onHealth: (health: TabHealth) => void;
+  /**
+   * Scores texts with the AI model. Resolves to null when the model is off or
+   * not approved; rejects on a transient failure.
+   */
+  classify?: (texts: string[]) => Promise<CategoryScores[] | null>;
 }
+
+/** Collects posts for ~one frame before asking the model, so a timeline page goes in one request. */
+const MODEL_FLUSH_MS = 30;
 
 interface Evaluation {
   /** Lowercase author handle. */
@@ -35,9 +45,15 @@ interface Evaluation {
   /** Counts as a strike against the author (not for clean copy-paste clusters). */
   strike: boolean;
   clusterSize: number;
-  /** Another copy in the cluster changed; recompute on next sight. */
+  /** Waiting for model scores. */
+  awaitingModel: boolean;
+  /** For the review log, if hidden ("at" is filled in when reported). */
+  entry: Omit<ReviewEntry, 'at'>;
+  /** Another copy in the cluster changed, or scores arrived; recompute on next sight. */
   stale?: boolean;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** X's codes for posts without a real language: undetermined, no text, emoji-only, hashtags-only, art. */
 const NEUTRAL_LANGS = new Set(['und', 'zxx', 'qme', 'qht', 'qam', 'art']);
@@ -68,10 +84,21 @@ export class ContentPipeline {
   private readonly articles = new Map<string, Element>();
   private readonly revealed = new Set<string>();
   private readonly reported = new Set<string>();
+  /** Posts you marked "not abusive". */
+  private notAbusive = new Set<string>();
   private me: string | undefined;
   private observer: MutationObserver | null = null;
   private stats = { articles: 0, extracted: 0, evaluated: 0, withRecord: 0, users: 0, incompleteUsers: 0 };
   private lastHealth = '';
+  /** Model scores by post text (the same text can appear under several post ids). */
+  private readonly modelScores = new Map<string, CategoryScores>();
+  private readonly postsByText = new Map<string, Set<string>>();
+  private readonly modelPending = new Set<string>();
+  private readonly modelFailed = new Set<string>();
+  private modelQueue: string[] = [];
+  private modelFlush: ReturnType<typeof setTimeout> | null = null;
+  /** The model is off or not approved; stop asking until settings change. */
+  private modelOff = false;
 
   constructor(
     private readonly deps: PipelineDeps,
@@ -111,6 +138,8 @@ export class ContentPipeline {
   updateSettings(settings: Settings): void {
     this.applySettings(settings);
     this.evaluations.clear();
+    this.modelOff = false;
+    this.modelFailed.clear();
     this.processAll();
   }
 
@@ -138,6 +167,18 @@ export class ContentPipeline {
 
   reveal(postId: string): void {
     this.revealed.add(postId);
+    const article = this.articles.get(postId);
+    if (article) this.process([article]);
+  }
+
+  updateOverrides(notAbusive: Iterable<string>): void {
+    this.notAbusive = new Set(notAbusive);
+    this.processAll();
+  }
+
+  /** Shows the post straight away; the background records it and syncs other tabs. */
+  markNotAbusive(postId: string): void {
+    this.notAbusive.add(postId);
     const article = this.articles.get(postId);
     if (article) this.process([article]);
   }
@@ -171,16 +212,24 @@ export class ContentPipeline {
     const mute = activeMute(this.muteState.mutes, handle, this.deps.now());
     if (mute) {
       const detail = mute.reason === 'strikes' ? 'muted after repeated abuse' : 'muted by you';
-      render(article, post.id, { action: this.settings.actions.muted, label: `Muted @${post.handle}`, detail }, revealed);
+      const treatment: Treatment = { action: this.settings.actions.muted, label: `Muted @${post.handle}`, detail, actions: ['unmute'] };
+      render(article, post.id, treatment, revealed);
+      return;
+    }
+
+    if (this.notAbusive.has(post.id)) {
+      render(article, post.id, null, revealed);
       return;
     }
 
     const evaluation = this.evaluate(post, context, focalId);
-    render(article, post.id, evaluation.verdict.flagged ? this.treatment(evaluation.verdict) : null, revealed);
+    render(article, post.id, this.treatmentFor(evaluation), revealed);
 
-    if (evaluation.strike && !this.reported.has(post.id)) {
+    if (evaluation.verdict.flagged && !this.reported.has(post.id)) {
       this.reported.add(post.id);
-      this.deps.onFlagged({ handle, postId: post.id, at: this.deps.now(), reasons: evaluation.verdict.reasons });
+      const now = this.deps.now();
+      const strike = evaluation.strike ? { handle, postId: post.id, at: now, reasons: evaluation.verdict.reasons } : undefined;
+      this.deps.onFlagged({ ...evaluation.entry, at: now }, strike);
     }
   }
 
@@ -197,9 +246,8 @@ export class ContentPipeline {
     const nonEnglish = match.hinglish || (!!lang && lang !== 'en' && !NEUTRAL_LANGS.has(lang));
 
     const record = this.accounts.get(handle);
-    const assessment = this.settings.signals.enabled
-      ? assessAccount(record ?? this.domRecord(post), this.settings.signals, this.deps.now())
-      : LOW;
+    const account = record ?? this.domRecord(post);
+    const assessment = this.settings.signals.enabled ? assessAccount(account, this.settings.signals, this.deps.now()) : LOW;
 
     let cluster: string[] = [];
     const postedAt = apiPost?.createdAt ?? post.postedAt;
@@ -208,10 +256,12 @@ export class ContentPipeline {
       if (key) cluster = this.tracker.add(key, { postId: post.id, author: handle, postedAt });
     }
     const copyOfFlagged = cluster.some((id) => id !== post.id && this.evaluations.get(id)?.ownFlag);
+    const model = this.modelScores.get(text);
 
     const verdict = decide(
       {
         lexiconHits: match.hits,
+        model,
         suppressed: match.suppressed,
         // Every author in a copy-paste cluster is treated as highly suspicious for that post.
         suspicion: cluster.length > 0 ? 'high' : assessment.level,
@@ -232,7 +282,51 @@ export class ContentPipeline {
     }
     if (verdict.flagged && directed && assessment.level !== 'low') verdict.reasons.push(...assessment.reasons);
 
-    const evaluation: Evaluation = { handle, hadRecord: !!record, text, verdict, ownFlag, strike, clusterSize: cluster.length };
+    // Posts the word lists already settled don't need the model.
+    const awaitingModel = !model && !ownFlag && this.requestModel(text, post.id);
+
+    const entry: Omit<ReviewEntry, 'at'> = {
+      postId: post.id,
+      handle: post.handle,
+      text,
+      url: `https://x.com/${post.handle}/status/${post.id}`,
+      postedAt,
+      context,
+      directed,
+      lang,
+      hinglish: match.hinglish,
+      categories: verdict.categories,
+      severe: verdict.severe,
+      reasons: verdict.reasons,
+      model,
+      wordHits: match.hits.map(({ term, matched, strength, category }) => ({ term, matched, strength, category })),
+      account: {
+        ageDays: account.createdAt === undefined ? undefined : Math.floor((this.deps.now() - account.createdAt) / DAY_MS),
+        followers: account.followers,
+        following: account.following,
+        defaultAvatar: account.defaultAvatar,
+        blueVerified: account.blueVerified,
+        source: account.source,
+        level: assessment.level,
+        reasons: assessment.reasons,
+      },
+      cluster:
+        cluster.length > 0
+          ? { size: cluster.length, handles: [...new Set(cluster.map((id) => (id === post.id ? handle : this.evaluations.get(id)?.handle)))].filter((h): h is string => !!h) }
+          : undefined,
+    };
+
+    const evaluation: Evaluation = {
+      handle,
+      hadRecord: !!record,
+      text,
+      verdict,
+      ownFlag,
+      strike,
+      clusterSize: cluster.length,
+      awaitingModel,
+      entry,
+    };
     this.evaluations.set(post.id, evaluation);
     if (!previous) {
       this.stats.evaluated++;
@@ -257,13 +351,60 @@ export class ContentPipeline {
     if (articles.length > 0) this.process(articles);
   }
 
-  private treatment(verdict: Verdict): Treatment {
+  private treatmentFor(evaluation: Evaluation): Treatment | null {
+    const { verdict } = evaluation;
+    if (!verdict.flagged) {
+      return evaluation.awaitingModel && this.settings.model.preBlur
+        ? { action: 'blur', label: 'Checking…', detail: 'Abuse Shield is scoring this post', actions: [] }
+        : null;
+    }
     const what = verdict.categories.map((c) => CATEGORY_LABELS[c]).join(', ') || 'copy-paste reply';
+    const reason = verdict.reasons[0];
+    const shown = reason && !this.settings.display.showMatchedWords ? withoutMatchedWords(reason) : reason;
     return {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
       label: 'Hidden by Abuse Shield',
-      detail: verdict.reasons[0] ? `${what} · ${verdict.reasons[0]}` : what,
+      detail: shown ? `${what} · ${shown}` : what,
+      actions: ['not-abusive', 'mute', 'mute-on-x'],
     };
+  }
+
+  /** Queues a text for the model. Returns whether scores are on their way. */
+  private requestModel(text: string, postId: string): boolean {
+    const { model } = this.settings;
+    if (!this.deps.classify || !model.enabled || !model.downloadApproved || this.modelOff) return false;
+    if (text.trim().length < 2 || this.modelFailed.has(text)) return false;
+    let posts = this.postsByText.get(text);
+    if (!posts) this.postsByText.set(text, (posts = new Set()));
+    posts.add(postId);
+    if (!this.modelPending.has(text)) {
+      this.modelPending.add(text);
+      this.modelQueue.push(text);
+      this.modelFlush ??= setTimeout(() => this.flushModel(), MODEL_FLUSH_MS);
+    }
+    return true;
+  }
+
+  private flushModel(): void {
+    this.modelFlush = null;
+    const texts = this.modelQueue.splice(0);
+    if (texts.length === 0 || !this.deps.classify) return;
+    const done = () => {
+      texts.forEach((text) => this.modelPending.delete(text));
+      this.reevaluate(texts.flatMap((text) => [...(this.postsByText.get(text) ?? [])]));
+    };
+    this.deps.classify(texts).then(
+      (scores) => {
+        if (scores) texts.forEach((text, i) => this.modelScores.set(text, scores[i]!));
+        else this.modelOff = true;
+        done();
+      },
+      () => {
+        // Don't retry these texts in a loop; they're re-requested after a settings change.
+        texts.forEach((text) => this.modelFailed.add(text));
+        done();
+      },
+    );
   }
 
   private domRecord(post: DomPost): AccountRecord {

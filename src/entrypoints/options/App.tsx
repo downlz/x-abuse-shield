@@ -1,5 +1,12 @@
+import { useState } from 'react';
+import { loadMuteState, loadSettings, localDay, saveMuteState, saveSettings } from '@/adapters/storage/extension-storage';
+import { makeBackup, readBackup } from '@/core/config/backup';
 import { SUGGESTED_BIO_KEYWORDS } from '@/core/config/defaults';
+import { activeThresholds } from '@/core/config/migrate';
 import type { Action, MuteDuration, Settings } from '@/core/config/schema';
+import type { Category } from '@/core/engine/categories';
+import { PRESETS } from '@/core/engine/presets';
+import { ModelCard } from '@/ui/ModelCard';
 import type { MuteEntry } from '@/core/mute/mutes';
 import type { Message } from '@/shared/messages';
 import { Check, LinesField, NumberField, Segmented } from '@/ui/controls';
@@ -23,13 +30,65 @@ export function App() {
         <p className="muted">Changes save automatically and apply to open x.com tabs straight away.</p>
       </header>
       <General settings={settings} update={update} />
+      <AiModel settings={settings} update={update} />
       <Scopes settings={settings} update={update} />
       <WordLists settings={settings} update={update} />
       <AccountChecks settings={settings} update={update} />
       <CopyPaste settings={settings} update={update} />
       <Strikes settings={settings} update={update} />
       <Muted />
+      <Backup />
     </main>
+  );
+}
+
+function Backup() {
+  const [message, setMessage] = useState<string | null>(null);
+  const exportBackup = async () => {
+    const backup = makeBackup(await loadSettings(), await loadMuteState(), Date.now());
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const link = Object.assign(document.createElement('a'), { href: url, download: `abuse-shield-backup-${localDay()}.json` });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+  const importBackup = async (file: File) => {
+    const result = readBackup(await file.text());
+    if ('error' in result) return setMessage(result.error);
+    await saveSettings(result.settings);
+    await saveMuteState(result.muteState);
+    setMessage(`Imported settings and ${result.muteState.mutes.length} muted accounts.`);
+  };
+  return (
+    <section className="card">
+      <h2>Backup</h2>
+      <p className="hint">Settings, word lists, allowlist and muted accounts in one file — to move to another browser or device.</p>
+      <div className="row">
+        <button type="button" onClick={() => void exportBackup()}>
+          Export
+        </button>
+        <label className="row" style={{ cursor: 'pointer' }}>
+          <span>Import:</span>
+          <input
+            type="file"
+            accept="application/json,.json"
+            aria-label="Import backup"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void importBackup(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+      {message && <p role="status">{message}</p>}
+      <p className="hint">
+        Hidden posts and your “not abusive” corrections are on the{' '}
+        <a href={browser.runtime.getURL('/review.html')} target="_blank" rel="noreferrer">
+          review page
+        </a>
+        .
+      </p>
+    </section>
   );
 }
 
@@ -49,6 +108,7 @@ function General({ settings, update }: { settings: Settings; update: Update }) {
             { value: 'relaxed', label: 'Relaxed' },
             { value: 'balanced', label: 'Balanced' },
             { value: 'strict', label: 'Strict' },
+            ...(settings.preset === 'custom' ? [{ value: 'custom' as const, label: 'Custom' }] : []),
           ]}
           onChange={(preset) => update((s) => ({ ...s, preset }))}
         />
@@ -57,6 +117,91 @@ function General({ settings, update }: { settings: Settings; update: Update }) {
       <ActionField label="Threats and severe abuse" value={settings.actions.severe} onChange={(severe) => update((s) => ({ ...s, actions: { ...s.actions, severe } }))} />
       <ActionField label="Posts by muted accounts" value={settings.actions.muted} onChange={(muted) => update((s) => ({ ...s, actions: { ...s.actions, muted } }))} />
       <p className="hint">Blur and Collapse keep a “Show” button. Remove hides the post completely.</p>
+      <Check
+        checked={settings.display.showMatchedWords}
+        onChange={(showMatchedWords) => update((s) => ({ ...s, display: { ...s.display, showMatchedWords } }))}
+        hint="e.g. word list: “idiot” instead of just word list"
+      >
+        Show the matched words on hidden posts
+      </Check>
+    </section>
+  );
+}
+
+const CATEGORY_INFO: { key: Category; name: string; hint: string }[] = [
+  { key: 'insult', name: 'Insults', hint: 'demeaning someone' },
+  { key: 'toxicity', name: 'Toxic', hint: 'rude, hostile, disrespectful' },
+  { key: 'threat', name: 'Threats', hint: 'violence or harm' },
+  { key: 'severe_toxicity', name: 'Severe abuse', hint: 'very hateful, aggressive' },
+  { key: 'identity_attack', name: 'Identity attacks', hint: 'religion, caste, gender, sexuality, ethnicity' },
+  { key: 'obscene', name: 'Obscenity', hint: 'swearing, vulgarity' },
+  { key: 'sexual_explicit', name: 'Sexual content', hint: 'sexually explicit language' },
+];
+
+function AiModel({ settings, update }: { settings: Settings; update: Update }) {
+  const thresholds = activeThresholds(settings);
+  const setModel = (patch: Partial<Settings['model']>) => update((s) => ({ ...s, model: { ...s.model, ...patch } }));
+  const setThreshold = (key: Category, value: number | null) =>
+    update((s) => ({ ...s, preset: 'custom', customThresholds: { ...activeThresholds(s), [key]: value } }));
+  return (
+    <section className="card">
+      <h2>AI model</h2>
+      <ModelCard settings={settings} update={update} heading="Status" />
+      <Check checked={settings.model.enabled} onChange={(enabled) => setModel({ enabled })}>
+        Use the AI model
+      </Check>
+      <Check checked={settings.model.preBlur} onChange={(preBlur) => setModel({ preBlur })} hint="about a third of a second per screen of posts">
+        Blur posts until the model has checked them, so abuse never flashes
+      </Check>
+      <div className="field">
+        <span>Unload after (idle minutes)</span>
+        <NumberField label="Idle minutes" min={1} max={120} value={settings.model.idleMinutes} onChange={(idleMinutes) => setModel({ idleMinutes })} />
+      </div>
+
+      <h3 style={{ marginTop: 8 }}>When to hide</h3>
+      <p className="hint">
+        The model scores each post from 0 to 1 per category. A post is hidden when a score reaches the threshold — lower
+        hides more. Moving a slider switches the preset to Custom.
+      </p>
+      {CATEGORY_INFO.map(({ key, name, hint }) => {
+        const value = thresholds[key];
+        return (
+          <div className="slider-row" key={key}>
+            <span>
+              {name} <span className="hint">· {hint}</span>
+            </span>
+            <input
+              type="range"
+              min={0.2}
+              max={0.95}
+              step={0.05}
+              value={value ?? 0.95}
+              disabled={value === null}
+              aria-label={`${name} threshold`}
+              onChange={(e) => setThreshold(key, Number(e.target.value))}
+            />
+            <span style={{ minWidth: 36 }}>{value === null ? '—' : value.toFixed(2)}</span>
+            <Check checked={value === null} onChange={(off) => setThreshold(key, off ? null : (PRESETS.balanced[key] ?? 0.85))}>
+              Off
+            </Check>
+          </div>
+        );
+      })}
+      <div className="slider-row">
+        <span>
+          Non-English posts <span className="hint">· the model scores them lower</span>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={0.3}
+          step={0.05}
+          value={settings.scoring.nonEnglishOffset}
+          aria-label="Non-English threshold offset"
+          onChange={(e) => update((s) => ({ ...s, scoring: { ...s.scoring, nonEnglishOffset: Number(e.target.value) } }))}
+        />
+        <span>−{settings.scoring.nonEnglishOffset.toFixed(2)}</span>
+      </div>
     </section>
   );
 }
@@ -100,6 +245,13 @@ function WordLists({ settings, update }: { settings: Settings; update: Update })
         Slurs and abuse aimed at someone hide a post on their own. Milder words (“pagal”, “idiot”) only count together
         with other evidence, so friendly teasing passes.
       </p>
+      <Check
+        checked={settings.scoring.mildWordsRepliesOnly}
+        onChange={(mildWordsRepliesOnly) => update((s) => ({ ...s, scoring: { ...s.scoring, mildWordsRepliesOnly } }))}
+        hint="recommended: avoids hiding “this is fucking amazing”"
+      >
+        Count milder words only in replies and mentions
+      </Check>
       <div className="stack" style={{ gap: 6 }}>
         <span>Always hide posts containing (one per line)</span>
         <LinesField label="Blocked words" value={settings.lexicon.customBlock} onChange={(customBlock) => set({ customBlock })} />

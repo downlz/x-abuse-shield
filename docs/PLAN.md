@@ -4,7 +4,7 @@ Multilingual, on-device abuse filter for x.com. Chrome extension first, mobile l
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **Phase 1 built, awaiting validation on live x.com** — 2026-10-23. Phase 0 results: [SPIKE-REPORT.md](SPIKE-REPORT.md).
+Status: **Phase 3 built** — 2026-10-23. Phase 1 validated on live x.com by the user; ~850 MB model memory accepted for now. Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
 ---
 
@@ -114,8 +114,8 @@ Suspicion = sum, capped at 1 → **low** (< 0.30) · **medium** (0.30–0.59) ·
 
 ### 5.2 Coordination (copy-paste brigades)
 
-- **Fingerprint:** extends the text-hash cache. Normalise the text (lowercase, de-obfuscate, strip @mentions, URLs and extra whitespace), then store an exact hash plus a 64-bit SimHash over word 3-grams.
-- **Match:** another author's post with the same hash, or a SimHash within Hamming distance ≤ 3.
+- **Fingerprint:** extends the text-hash cache. Normalise the text (lowercase, de-obfuscate, strip @mentions, URLs and extra whitespace), then store the exact key plus a 64-bit SimHash over character 4-grams (word 3-grams change too much when one word of a short reply changes).
+- **Match:** another author's post with the same key, or a SimHash within Hamming distance ≤ 12 (measured: rewrites 5–15, unrelated same-topic replies 18–29).
 - **Cluster:** ≥ 3 distinct authors whose copies were posted within 10 minutes of each other. Uses post timestamps, not the time the user scrolled past them.
 - **Too short to count:** texts under 5 words or 20 characters after normalisation ("lol", "😂😂", "true") match each other naturally.
 - **Effect:** every author in a cluster is raised to high suspicion for that post. If any copy is flagged, every copy is flagged and each author gets a strike.
@@ -131,6 +131,7 @@ Suspicion = sum, capped at 1 → **low** (< 0.30) · **medium** (0.30–0.59) ·
 | high | −0.20 | flags on its own |
 
 - **Replies and mentions only.** Suspicion applies to posts aimed at someone: replies on a post's page, Notifications, and posts X marks as replies. Standalone posts are always scored as low suspicion.
+- **Mild words also count only in replies and mentions** (Phase 2 calibration; a setting). In standalone posts — "this is fucking amazing", "lol this meme is so dumb", quoting an insult to condemn it — the model scored 0.54–0.70 toxicity, so no corroboration bar separated them from mild abuse.
 - **Not for `identity_attack` or `obscene`.** Those categories misfire on identity mentions and friendly swearing, so their thresholds are never lowered.
 - **Floor 0.45.** Offsets can't take a threshold below 0.45 (or the preset's own value, if lower). Clean Hinglish scored up to 0.44 in Phase 0.
 - Offsets stack with the non-English offset, within the floor.
@@ -209,22 +210,30 @@ x-abuse-shield/
   - The health check doesn't "pause": posts it can read are still filtered, and the badge plus popup say when it can't read the page.
   - If X's data ever arrives after a post was scored, that author's posts are re-checked (a late hide is better than none).
 
-### Phase 2 — Model engine
-- Offscreen inference, visible-first queue, batching, cache
-- Model lifecycle: load when an x.com tab opens, unload after idle; word-list-only mode (default on ≤ 4 GB devices)
-- Memory reduction investigation (target < 700 MB)
-- First-run download with consent + progress; model status in popup
-- Per-category sliders, language offset, pre-blur option
-- Suspicion offsets on model thresholds; SimHash near-duplicate matching
-- Persist account records (7-day TTL) and fingerprints (24-hour TTL) in the service worker, for clusters across tabs and reloads
-- Calibration script on 100–200 labelled real posts, with author records; tunes signal weights and offsets too
-- **Exit:** verdict within ~300 ms of a post appearing; presets sensible on the sample; suspicion offsets catch more brigade replies without raising false alarms on established accounts
+### Phase 2 — Model engine ✅ built (real labelled data pending)
+- ✅ Offscreen inference: one model for all tabs, batches of 8, LRU cache by text. "Visible-first" is done as **newest request first** — while scrolling, the posts on screen now are scored before ones scrolled past — so the content script never forces a layout to measure visibility
+- ✅ Model lifecycle: loads on the first score request (or right after the download is approved), unloads after idle minutes (1-minute alarm; verified: unloaded 115 s after a 1-minute idle setting); word-list-only by default on devices reporting ≤ 4 GB
+- ⚠️ Memory reduction: target < 700 MB **not met**. Tokenizer ≈ 180 MB; no session option (arena, graph optimisation, prepacking) changes the ~850 MB. Next options: ONNX Runtime `.ort` format hosted by us, or a smaller model. See SPIKE-REPORT
+- ✅ First-run download only after approval, with progress; model status in popup and settings
+- ✅ Per-category sliders (switch the preset to Custom), non-English offset, pre-blur option
+- ✅ Suspicion offsets on model thresholds (from Phase 1); near-duplicate matching with SimHash over **character 4-grams** (word 3-grams are too coarse for tweet-length text). Threshold 12 of 64 bits, measured: rewrites 5–15, unrelated same-topic replies 18–29
+- ⏸ Persisting account records and fingerprints in the service worker: deferred. A thread's replies load in one tab and are re-detected after a reload, so cross-tab persistence adds little for its complexity (an async cross-tab round trip that can't act before paint)
+- ✅ Calibration script (`npm run calibrate`, data format in `calibration/README.md`), run on 68 posts (54 hand-written + 14 real). Led to one default change: **mild words count only in replies and mentions** (Balanced: 38/44 caught · 5/24 false alarms → 36/44 · 2/24)
+- Word lists extended from live testing: *bsdwale*, *gaand mei/mein…* phrases, *nalla/nallo*, *dalla* (Hinglish-only), Hinglish markers matched loosely ("bhaaai")
+- **Exit:**
+  - ✅ verdict 217–262 ms after a post appears, model loaded (end-to-end in Chrome)
+  - ✅ presets sensible on the available sample (Balanced, word lists + model: 36/44 caught, 2/24 false alarms; word lists only: 22/44, 0/24) — provisional until 100–200 real labelled posts
+  - ⏳ suspicion offsets vs. brigade replies — needs labelled posts with account details
 
-### Phase 3 — Review & control
-- Review log (what, why, scores, account reasons, cluster members) with "not abusive" / unmute / allowlist
-- "Not abusive" on a post from a suspicious account offers to allowlist that account
-- Mute/unmute from the placeholder; "Mute on X" button (user-clicked)
-- Stats; import/export
+### Phase 3 — Review & control ✅ built ("Mute on X" needs a live check)
+- ✅ Review page (`review.html`, from the popup's "Hidden posts"): every hidden post with why — word hits, model scores, account details and suspicion reasons, copy-paste members — filters (to review / abusive / not abusive), search, optional text blur. Last 30 days, up to 500 posts, stored only in this browser
+- ✅ "Not abusive" (on the hidden post or the review page) shows it again in every tab, withdraws its strike and lifts an automatic mute that falls below the strike count; changing it back to "abusive" hides it again
+- ✅ "Not abusive" on a suspicious account's post offers "Always allow @handle"
+- ✅ Buttons on hidden posts: Show · Not abusive · Mute here · Mute on X; muted posts get Unmute
+- ✅ "Mute on X" opens the post's ⋯ menu and clicks "Mute @handle" only when that item names the account (and isn't "Unmute"); otherwise it leaves X's menu open for you. Also mutes locally. Selector for the Mute item is inferred (the item before `data-testid="block"`), so it needs checking on live x.com
+- ✅ Export labelled posts as `posts.jsonl` (no handles) for `npm run calibrate`; "Add a missed post" records abuse that wasn't hidden, so calibration sees misses too
+- ✅ Stats on the review page (hidden, reviewed, marked not abusive, top categories and accounts); backup export/import of settings + mutes in Settings
+- Not included: marking a *visible* post as abusive directly on x.com (use "Add a missed post")
 
 ### Phase 4 — Hardening & release
 - Edge cases: "Show more", reposts, quotes, emoji-only, themes, RTL
