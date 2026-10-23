@@ -12,15 +12,20 @@ import { closeOffscreenDocument, ensureOffscreenDocument } from '@/adapters/infe
 import {
   KEYS,
   loadMuteState,
+  loadOverrides,
+  loadReviewLog,
   loadSettings,
   loadStats,
   localDay,
   saveMuteState,
+  saveOverrides,
+  saveReviewLog,
   saveSettings,
   saveStats,
 } from '@/adapters/storage/extension-storage';
 import { migrateSettings } from '@/core/config/migrate';
-import { recordStrike, unmute, type Strike } from '@/core/mute/mutes';
+import { addManualMute, normalizeHandle, recordStrike, unmute, withdrawStrike, type Strike } from '@/core/mute/mutes';
+import { appendEntry, labelEntry, type ReviewEntry, type ReviewLabel } from '@/core/review/log';
 import { healthKey, type TabHealth } from '@/shared/health';
 import { isMessage, type Reply, type ScoreReply } from '@/shared/messages';
 import { MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
@@ -85,8 +90,30 @@ export default defineBackground(() => {
       case 'offscreen:close':
         return reply(closeOffscreenDocument());
       case 'post:flagged':
-        void serial(() => onFlagged(message.strike, counted));
+        void serial(() => onFlagged(message.entry, message.strike, counted));
         return;
+      case 'review:label':
+        return reply(serial(() => onLabel(message.postId, message.label)));
+      case 'review:add-missed':
+        return reply(serial(() => onMissed(message.text, message.directed, message.hinglish)));
+      case 'review:clear':
+        return reply(serial(() => saveReviewLog([])));
+      case 'mute:add':
+        return reply(
+          serial(async () => {
+            const settings = await loadSettings();
+            await saveMuteState(addManualMute(await loadMuteState(), message.handle, settings.strikes.muteFor, Date.now()));
+          }),
+        );
+      case 'allow:add':
+        return reply(
+          serial(async () => {
+            const settings = await loadSettings();
+            const handle = normalizeHandle(message.handle);
+            if (!settings.allowlist.some((h) => normalizeHandle(h) === handle)) settings.allowlist.push(handle);
+            await saveSettings(settings);
+          }),
+        );
       case 'health':
         if (sender.tab?.id !== undefined) void onHealth(sender.tab.id, message.health);
         return;
@@ -117,19 +144,60 @@ async function onModelStatus(status: ModelStatus): Promise<void> {
   await browser.storage.session.set({ [MODEL_STATUS_KEY]: status });
 }
 
-async function onFlagged(strike: Strike, counted: Set<string>): Promise<void> {
+async function onFlagged(entry: ReviewEntry, strike: Strike | undefined, counted: Set<string>): Promise<void> {
   const settings = await loadSettings();
   const stats = await loadStats(localDay());
-  if (!counted.has(strike.postId)) {
-    counted.add(strike.postId);
+  if (!counted.has(entry.postId)) {
+    counted.add(entry.postId);
     stats.flagged++;
   }
-  if (settings.strikes.enabled) {
+  if (strike && settings.strikes.enabled) {
     const { state, newMute } = recordStrike(await loadMuteState(), strike, settings.strikes, Date.now());
     await saveMuteState(state);
     if (newMute) stats.muted++;
   }
   await saveStats(stats);
+  await saveReviewLog(appendEntry(await loadReviewLog(), entry, Date.now()));
+}
+
+/**
+ * "Not abusive" keeps the post visible everywhere, withdraws its strike and
+ * lifts an automatic mute that no longer has enough strikes behind it.
+ * Changing your mind back to "abusive" hides it again.
+ */
+async function onLabel(postId: string, label: ReviewLabel | null): Promise<void> {
+  const now = Date.now();
+  await saveReviewLog(labelEntry(await loadReviewLog(), postId, label ?? undefined, now));
+  const overrides = await loadOverrides();
+  const notAbusive = overrides.notAbusive.filter((id) => id !== postId);
+  if (label === 'not-abusive') {
+    notAbusive.push(postId);
+    const settings = await loadSettings();
+    await saveMuteState(withdrawStrike(await loadMuteState(), postId, settings.strikes));
+  }
+  await saveOverrides({ notAbusive });
+}
+
+/** A post that should have been hidden, so calibration sees misses too. */
+async function onMissed(text: string, directed: boolean, hinglish: boolean): Promise<void> {
+  const now = Date.now();
+  const entry: ReviewEntry = {
+    postId: `manual-${now}`,
+    handle: '',
+    text,
+    url: '',
+    at: now,
+    context: 'manual',
+    directed,
+    hinglish,
+    categories: [],
+    severe: false,
+    reasons: ['added by you: should have been hidden'],
+    wordHits: [],
+    label: 'abusive',
+    labelledAt: now,
+  };
+  await saveReviewLog(appendEntry(await loadReviewLog(), entry, now));
 }
 
 async function onHealth(tabId: number, health: TabHealth): Promise<void> {

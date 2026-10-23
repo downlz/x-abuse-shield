@@ -1,16 +1,22 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { collectRecords } from '@/adapters/x-api/collect';
 import { X } from '@/adapters/x-dom/selectors';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import type { Settings } from '@/core/config/schema';
 import type { CategoryScores } from '@/core/engine/categories';
 import type { MuteState, Strike } from '@/core/mute/mutes';
+import type { ReviewEntry } from '@/core/review/log';
 import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
 import type { TabHealth } from '@/shared/health';
 import { loadHtmlFixture, loadJsonFixture } from '../helpers';
 
 const NOW = Date.parse('2026-10-23T15:00:00Z');
+
+// Attached pipelines watch the whole document; detach them so one test's
+// pipeline can't react to the next test's page.
+const created: ContentPipeline[] = [];
+afterEach(() => created.splice(0).forEach((pipeline) => pipeline.detach()));
 
 function setup(
   path: string,
@@ -21,20 +27,25 @@ function setup(
   } = {},
 ) {
   const strikes: Strike[] = [];
+  const entries: ReviewEntry[] = [];
   const health: TabHealth[] = [];
   const pipeline = new ContentPipeline(
     {
       doc: document,
       path: () => path,
       now: () => NOW,
-      onFlagged: (s) => strikes.push(s),
+      onFlagged: (entry, strike) => {
+        entries.push(entry);
+        if (strike) strikes.push(strike);
+      },
       onHealth: (h) => health.push(h),
       classify: options.classify,
     },
     { ...structuredClone(DEFAULT_SETTINGS), ...options.settings },
     options.muteState ?? { mutes: [], strikes: [] },
   );
-  return { pipeline, strikes, health };
+  created.push(pipeline);
+  return { pipeline, strikes, entries, health };
 }
 
 const scores = (partial: Partial<CategoryScores> = {}): CategoryScores => ({
@@ -198,6 +209,59 @@ describe('notifications', () => {
     pipeline.addRecords({ ...collectRecords(loadJsonFixture('notifications.rest.json')), operation: 'mentions' });
     pipeline.attach();
     expect(treatments()).toEqual({ '4001': 'collapse', '4002': null, '4003': 'blur' });
+  });
+});
+
+describe('review log and corrections', () => {
+  it('reports why a post was hidden, with account and copy-paste details', () => {
+    loadHtmlFixture('synthetic-thread.html');
+    const { pipeline, entries } = setup('/LakotaMan1/status/3000');
+    pipeline.addRecords({ ...collectRecords(loadJsonFixture('tweet-detail.legacy-shape.json')), operation: 'TweetDetail' });
+    pipeline.attach();
+
+    const reply = entries.find((e) => e.postId === '3007')!;
+    expect(reply).toMatchObject({
+      handle: 'rahul48213977',
+      url: 'https://x.com/rahul48213977/status/3007',
+      context: 'thread',
+      directed: true,
+      categories: ['insult'],
+      at: NOW,
+      account: { ageDays: 9, followers: 12, defaultAvatar: true, source: 'api', level: 'high' },
+    });
+    expect(reply.wordHits.map((h) => h.term)).toEqual(expect.arrayContaining(['pathetic', 'loser']));
+
+    const copy = entries.find((e) => e.postId === '3005')!;
+    expect(copy.cluster?.size).toBe(3);
+    expect(new Set(copy.cluster?.handles)).toEqual(new Set(['brigade_one', 'brigade_two', 'brigade_three']));
+  });
+
+  it('shows posts marked "not abusive", here and after an override sync', () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const { pipeline } = setup('/home');
+    pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+    pipeline.markNotAbusive('2002');
+    expect(treatments()['2002']).toBeNull();
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const other = setup('/home');
+    other.pipeline.updateOverrides(['2002']);
+    other.pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('offers Unmute on muted posts and Not abusive / Mute on hidden ones', () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const muteState: MuteState = {
+      mutes: [{ handle: 'priya_runs', mutedAt: NOW - 1000, expiresAt: null, reason: 'manual', evidence: [] }],
+      strikes: [],
+    };
+    setup('/home', { muteState }).pipeline.attach();
+    const actions = (id: string) =>
+      [...document.querySelectorAll(`article[data-xas-post="${id}"] [data-xas-act]`)].map((b) => b.getAttribute('data-xas-act'));
+    expect(actions('2001')).toEqual(['show', 'unmute']);
+    expect(actions('2002')).toEqual(['show', 'not-abusive', 'mute', 'mute-on-x']);
   });
 });
 

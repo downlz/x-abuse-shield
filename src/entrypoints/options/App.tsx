@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { loadMuteState, loadSettings, localDay, saveMuteState, saveSettings } from '@/adapters/storage/extension-storage';
+import { makeBackup, readBackup } from '@/core/config/backup';
 import { SUGGESTED_BIO_KEYWORDS } from '@/core/config/defaults';
 import { activeThresholds } from '@/core/config/migrate';
 import type { Action, MuteDuration, Settings } from '@/core/config/schema';
@@ -34,7 +37,58 @@ export function App() {
       <CopyPaste settings={settings} update={update} />
       <Strikes settings={settings} update={update} />
       <Muted />
+      <Backup />
     </main>
+  );
+}
+
+function Backup() {
+  const [message, setMessage] = useState<string | null>(null);
+  const exportBackup = async () => {
+    const backup = makeBackup(await loadSettings(), await loadMuteState(), Date.now());
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const link = Object.assign(document.createElement('a'), { href: url, download: `abuse-shield-backup-${localDay()}.json` });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+  const importBackup = async (file: File) => {
+    const result = readBackup(await file.text());
+    if ('error' in result) return setMessage(result.error);
+    await saveSettings(result.settings);
+    await saveMuteState(result.muteState);
+    setMessage(`Imported settings and ${result.muteState.mutes.length} muted accounts.`);
+  };
+  return (
+    <section className="card">
+      <h2>Backup</h2>
+      <p className="hint">Settings, word lists, allowlist and muted accounts in one file — to move to another browser or device.</p>
+      <div className="row">
+        <button type="button" onClick={() => void exportBackup()}>
+          Export
+        </button>
+        <label className="row" style={{ cursor: 'pointer' }}>
+          <span>Import:</span>
+          <input
+            type="file"
+            accept="application/json,.json"
+            aria-label="Import backup"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void importBackup(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+      {message && <p role="status">{message}</p>}
+      <p className="hint">
+        Hidden posts and your “not abusive” corrections are on the{' '}
+        <a href={browser.runtime.getURL('/review.html')} target="_blank" rel="noreferrer">
+          review page
+        </a>
+        .
+      </p>
+    </section>
   );
 }
 

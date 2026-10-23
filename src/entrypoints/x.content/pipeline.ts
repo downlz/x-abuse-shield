@@ -6,6 +6,7 @@ import type { Category, CategoryScores } from '@/core/engine/categories';
 import { decide, type ScoringConfig, type Verdict } from '@/core/engine/decide';
 import { Lexicon } from '@/core/lexicon/match';
 import { activeMute, type MuteState, type Strike } from '@/core/mute/mutes';
+import type { ReviewEntry } from '@/core/review/log';
 import { assessAccount, type AccountRecord, type Assessment } from '@/core/signals/suspicion';
 import type { RecordsPayload } from '@/adapters/x-api/bridge';
 import { isDefaultAvatarUrl, type PostRecord } from '@/adapters/x-api/fields';
@@ -19,7 +20,8 @@ export interface PipelineDeps {
   doc: Document;
   path: () => string;
   now: () => number;
-  onFlagged: (strike: Strike) => void;
+  /** A post was newly hidden. `strike` is set when it counts against its author. */
+  onFlagged: (entry: ReviewEntry, strike?: Strike) => void;
   onHealth: (health: TabHealth) => void;
   /**
    * Scores texts with the AI model. Resolves to null when the model is off or
@@ -45,9 +47,13 @@ interface Evaluation {
   clusterSize: number;
   /** Waiting for model scores. */
   awaitingModel: boolean;
+  /** For the review log, if hidden ("at" is filled in when reported). */
+  entry: Omit<ReviewEntry, 'at'>;
   /** Another copy in the cluster changed, or scores arrived; recompute on next sight. */
   stale?: boolean;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** X's codes for posts without a real language: undetermined, no text, emoji-only, hashtags-only, art. */
 const NEUTRAL_LANGS = new Set(['und', 'zxx', 'qme', 'qht', 'qam', 'art']);
@@ -78,6 +84,8 @@ export class ContentPipeline {
   private readonly articles = new Map<string, Element>();
   private readonly revealed = new Set<string>();
   private readonly reported = new Set<string>();
+  /** Posts you marked "not abusive". */
+  private notAbusive = new Set<string>();
   private me: string | undefined;
   private observer: MutationObserver | null = null;
   private stats = { articles: 0, extracted: 0, evaluated: 0, withRecord: 0, users: 0, incompleteUsers: 0 };
@@ -163,6 +171,18 @@ export class ContentPipeline {
     if (article) this.process([article]);
   }
 
+  updateOverrides(notAbusive: Iterable<string>): void {
+    this.notAbusive = new Set(notAbusive);
+    this.processAll();
+  }
+
+  /** Shows the post straight away; the background records it and syncs other tabs. */
+  markNotAbusive(postId: string): void {
+    this.notAbusive.add(postId);
+    const article = this.articles.get(postId);
+    if (article) this.process([article]);
+  }
+
   processAll(): void {
     this.process(this.deps.doc.querySelectorAll(X.post));
   }
@@ -192,16 +212,24 @@ export class ContentPipeline {
     const mute = activeMute(this.muteState.mutes, handle, this.deps.now());
     if (mute) {
       const detail = mute.reason === 'strikes' ? 'muted after repeated abuse' : 'muted by you';
-      render(article, post.id, { action: this.settings.actions.muted, label: `Muted @${post.handle}`, detail }, revealed);
+      const treatment: Treatment = { action: this.settings.actions.muted, label: `Muted @${post.handle}`, detail, actions: ['unmute'] };
+      render(article, post.id, treatment, revealed);
+      return;
+    }
+
+    if (this.notAbusive.has(post.id)) {
+      render(article, post.id, null, revealed);
       return;
     }
 
     const evaluation = this.evaluate(post, context, focalId);
     render(article, post.id, this.treatmentFor(evaluation), revealed);
 
-    if (evaluation.strike && !this.reported.has(post.id)) {
+    if (evaluation.verdict.flagged && !this.reported.has(post.id)) {
       this.reported.add(post.id);
-      this.deps.onFlagged({ handle, postId: post.id, at: this.deps.now(), reasons: evaluation.verdict.reasons });
+      const now = this.deps.now();
+      const strike = evaluation.strike ? { handle, postId: post.id, at: now, reasons: evaluation.verdict.reasons } : undefined;
+      this.deps.onFlagged({ ...evaluation.entry, at: now }, strike);
     }
   }
 
@@ -218,9 +246,8 @@ export class ContentPipeline {
     const nonEnglish = match.hinglish || (!!lang && lang !== 'en' && !NEUTRAL_LANGS.has(lang));
 
     const record = this.accounts.get(handle);
-    const assessment = this.settings.signals.enabled
-      ? assessAccount(record ?? this.domRecord(post), this.settings.signals, this.deps.now())
-      : LOW;
+    const account = record ?? this.domRecord(post);
+    const assessment = this.settings.signals.enabled ? assessAccount(account, this.settings.signals, this.deps.now()) : LOW;
 
     let cluster: string[] = [];
     const postedAt = apiPost?.createdAt ?? post.postedAt;
@@ -258,6 +285,37 @@ export class ContentPipeline {
     // Posts the word lists already settled don't need the model.
     const awaitingModel = !model && !ownFlag && this.requestModel(text, post.id);
 
+    const entry: Omit<ReviewEntry, 'at'> = {
+      postId: post.id,
+      handle: post.handle,
+      text,
+      url: `https://x.com/${post.handle}/status/${post.id}`,
+      postedAt,
+      context,
+      directed,
+      lang,
+      hinglish: match.hinglish,
+      categories: verdict.categories,
+      severe: verdict.severe,
+      reasons: verdict.reasons,
+      model,
+      wordHits: match.hits.map(({ term, matched, strength, category }) => ({ term, matched, strength, category })),
+      account: {
+        ageDays: account.createdAt === undefined ? undefined : Math.floor((this.deps.now() - account.createdAt) / DAY_MS),
+        followers: account.followers,
+        following: account.following,
+        defaultAvatar: account.defaultAvatar,
+        blueVerified: account.blueVerified,
+        source: account.source,
+        level: assessment.level,
+        reasons: assessment.reasons,
+      },
+      cluster:
+        cluster.length > 0
+          ? { size: cluster.length, handles: [...new Set(cluster.map((id) => (id === post.id ? handle : this.evaluations.get(id)?.handle)))].filter((h): h is string => !!h) }
+          : undefined,
+    };
+
     const evaluation: Evaluation = {
       handle,
       hadRecord: !!record,
@@ -267,6 +325,7 @@ export class ContentPipeline {
       strike,
       clusterSize: cluster.length,
       awaitingModel,
+      entry,
     };
     this.evaluations.set(post.id, evaluation);
     if (!previous) {
@@ -296,7 +355,7 @@ export class ContentPipeline {
     const { verdict } = evaluation;
     if (!verdict.flagged) {
       return evaluation.awaitingModel && this.settings.model.preBlur
-        ? { action: 'blur', label: 'Checking…', detail: 'Abuse Shield is scoring this post' }
+        ? { action: 'blur', label: 'Checking…', detail: 'Abuse Shield is scoring this post', actions: [] }
         : null;
     }
     const what = verdict.categories.map((c) => CATEGORY_LABELS[c]).join(', ') || 'copy-paste reply';
@@ -304,6 +363,7 @@ export class ContentPipeline {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
       label: 'Hidden by Abuse Shield',
       detail: verdict.reasons[0] ? `${what} · ${verdict.reasons[0]}` : what,
+      actions: ['not-abusive', 'mute', 'mute-on-x'],
     };
   }
 

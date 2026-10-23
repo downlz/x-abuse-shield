@@ -13,7 +13,8 @@ export function Check(props: { checked: boolean; onChange: (checked: boolean) =>
 }
 
 export function Segmented<T extends string>(props: {
-  value: T;
+  /** null: nothing selected. */
+  value: T | null;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   label: string;

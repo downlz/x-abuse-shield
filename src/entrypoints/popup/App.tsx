@@ -51,9 +51,14 @@ export function App() {
 
       <TabStatus tab={tab} />
 
-      <button type="button" onClick={() => void browser.runtime.openOptionsPage()}>
-        Settings
-      </button>
+      <div className="row">
+        <button type="button" style={{ flex: 1 }} onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('/review.html') })}>
+          Hidden posts
+        </button>
+        <button type="button" style={{ flex: 1 }} onClick={() => void browser.runtime.openOptionsPage()}>
+          Settings
+        </button>
+      </div>
     </main>
   );
 }

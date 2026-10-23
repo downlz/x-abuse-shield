@@ -4,7 +4,7 @@ Multilingual, on-device abuse filter for x.com. Chrome extension first, mobile l
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **Phase 2 built** — 2026-10-23. Phase 1 validated on live x.com by the user. Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
+Status: **Phase 3 built** — 2026-10-23. Phase 1 validated on live x.com by the user; ~850 MB model memory accepted for now. Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
 ---
 
@@ -225,12 +225,15 @@ x-abuse-shield/
   - ✅ presets sensible on the available sample (Balanced, word lists + model: 36/44 caught, 2/24 false alarms; word lists only: 22/44, 0/24) — provisional until 100–200 real labelled posts
   - ⏳ suspicion offsets vs. brigade replies — needs labelled posts with account details
 
-### Phase 3 — Review & control
-- Review log (what, why, scores, account reasons, cluster members) with "not abusive" / unmute / allowlist
-- Export reviewed posts (with your "abusive" / "not abusive" labels and account details) to `calibration/posts.jsonl`, so calibration runs on your real data
-- "Not abusive" on a post from a suspicious account offers to allowlist that account
-- Mute/unmute from the placeholder; "Mute on X" button (user-clicked)
-- Stats; import/export
+### Phase 3 — Review & control ✅ built ("Mute on X" needs a live check)
+- ✅ Review page (`review.html`, from the popup's "Hidden posts"): every hidden post with why — word hits, model scores, account details and suspicion reasons, copy-paste members — filters (to review / abusive / not abusive), search, optional text blur. Last 30 days, up to 500 posts, stored only in this browser
+- ✅ "Not abusive" (on the hidden post or the review page) shows it again in every tab, withdraws its strike and lifts an automatic mute that falls below the strike count; changing it back to "abusive" hides it again
+- ✅ "Not abusive" on a suspicious account's post offers "Always allow @handle"
+- ✅ Buttons on hidden posts: Show · Not abusive · Mute here · Mute on X; muted posts get Unmute
+- ✅ "Mute on X" opens the post's ⋯ menu and clicks "Mute @handle" only when that item names the account (and isn't "Unmute"); otherwise it leaves X's menu open for you. Also mutes locally. Selector for the Mute item is inferred (the item before `data-testid="block"`), so it needs checking on live x.com
+- ✅ Export labelled posts as `posts.jsonl` (no handles) for `npm run calibrate`; "Add a missed post" records abuse that wasn't hidden, so calibration sees misses too
+- ✅ Stats on the review page (hidden, reviewed, marked not abusive, top categories and accounts); backup export/import of settings + mutes in Settings
+- Not included: marking a *visible* post as abusive directly on x.com (use "Add a missed post")
 
 ### Phase 4 — Hardening & release
 - Edge cases: "Show more", reposts, quotes, emoji-only, themes, RTL

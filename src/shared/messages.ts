@@ -1,5 +1,6 @@
 import type { CategoryScores } from '@/core/engine/categories';
 import type { Strike } from '@/core/mute/mutes';
+import type { ReviewEntry, ReviewLabel } from '@/core/review/log';
 import type { SpikeProgress, SpikeRunResult, SpikeSample } from '@/spike/types';
 import type { SpikeVariant } from '@/spike/variants';
 import type { TabHealth } from './health';
@@ -14,8 +15,17 @@ export type Message =
   | { type: 'spike:progress'; progress: SpikeProgress }
   | { type: 'spike:done'; result: SpikeRunResult }
   | { type: 'spike:error'; error: string }
-  /** Content script → background: a post was newly flagged. */
-  | { type: 'post:flagged'; strike: Strike }
+  /** Content script → background: a post was newly hidden (strike: counts against its author). */
+  | { type: 'post:flagged'; entry: ReviewEntry; strike?: Strike }
+  /** Placeholder / review page → background. null clears the label. */
+  | { type: 'review:label'; postId: string; label: ReviewLabel | null }
+  /** Review page → background: a post that should have been hidden, for calibration. */
+  | { type: 'review:add-missed'; text: string; directed: boolean; hinglish: boolean }
+  | { type: 'review:clear' }
+  /** Placeholder / review page → background: mute this account (in this browser). */
+  | { type: 'mute:add'; handle: string }
+  /** Review page → background: never filter this account. */
+  | { type: 'allow:add'; handle: string }
   /** Content script → background: tab health changed. */
   | { type: 'health'; health: TabHealth }
   /** Options page → background: remove a mute and its strikes. */

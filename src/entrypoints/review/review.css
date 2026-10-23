@@ -1,0 +1,22 @@
+main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.toolbar input[type='search'] {
+  flex: 1 1 200px; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.chip.severe { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.entry { display: flex; flex-direction: column; gap: 10px; }
+.entry header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.entry header a { color: inherit; font-weight: 600; }
+.post-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 10px 12px; border-left: 3px solid var(--border); }
+.blurred .post-text { filter: blur(6px); }
+.blurred .post-text:hover, .blurred .post-text:focus { filter: none; }
+.reasons { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details table { margin-top: 6px; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.summary .card { padding: 10px 12px; }
+.summary .stat { font-size: 20px; font-weight: 700; }
+a { color: var(--accent); }

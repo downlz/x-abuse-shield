@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   KEYS,
   loadMuteState,
+  loadReviewLog,
   loadSettings,
   loadStats,
   localDay,
@@ -12,6 +13,7 @@ import {
 import { migrateSettings } from '@/core/config/migrate';
 import type { Settings } from '@/core/config/schema';
 import type { MuteState } from '@/core/mute/mutes';
+import type { ReviewEntry } from '@/core/review/log';
 
 /** Settings from storage, kept live; `update` saves immediately. */
 export function useSettings(): [Settings | null, (change: (s: Settings) => Settings) => void] {
@@ -50,6 +52,17 @@ export function useMuteState(): MuteState | null {
     });
   }, []);
   return state;
+}
+
+export function useReviewLog(): ReviewEntry[] | null {
+  const [log, setLog] = useState<ReviewEntry[] | null>(null);
+  useEffect(() => {
+    void loadReviewLog().then(setLog);
+    return onLocalChange((changes) => {
+      if (changes[KEYS.reviewLog]) void loadReviewLog().then(setLog);
+    });
+  }, []);
+  return log;
 }
 
 export function useTodayStats(): DailyStats | null {

@@ -21,6 +21,30 @@ const check = (name: string, ok: boolean, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
+/**
+ * Gives every post an X-style ⋯ button whose menu lists Follow / Mute / Block
+ * (Block carries data-testid="block", as on x.com). Clicks are recorded in
+ * window.__xMenuClicks.
+ */
+const FAKE_X_MENU = `
+  for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
+    const handle = article.querySelector('[data-testid="User-Name"] a')?.getAttribute('href')?.slice(1);
+    const caret = document.createElement('button');
+    caret.setAttribute('data-testid', 'caret');
+    caret.textContent = '⋯';
+    caret.addEventListener('click', () => {
+      const layers = document.getElementById('layers') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'layers' }));
+      const items = ['Follow @' + handle, 'Mute @' + handle, 'Block @' + handle];
+      layers.innerHTML = '<div role="menu"><div data-testid="Dropdown">' + items.map((t) =>
+        '<div role="menuitem"' + (t.startsWith('Block') ? ' data-testid="block"' : '') + '><span>' + t + '</span></div>').join('') + '</div></div>';
+      layers.querySelectorAll('[role="menuitem"]').forEach((item) => item.addEventListener('click', () => {
+        window.__xMenuClicks = (window.__xMenuClicks || []).concat(item.textContent);
+        layers.innerHTML = '';
+      }));
+    });
+    article.querySelector('[data-testid="User-Name"]')?.append(caret);
+  }`;
+
 /** Turns a fixture into a page that loads its data, then renders the posts like X's app. */
 function fakePage(fixture: string, api: { url: string; via: 'fetch' | 'xhr' }, extraArticles = ''): string {
   let html = readFileSync(join(fixtures, 'x', fixture), 'utf8');
@@ -34,6 +58,7 @@ function fakePage(fixture: string, api: { url: string; via: 'fetch' | 'xhr' }, e
     setTimeout(async () => {
       ${load}
       document.body.append(document.getElementById('app').content.cloneNode(true));
+      ${FAKE_X_MENU}
       requestAnimationFrame(() => {
         window.__frame = Object.fromEntries([...document.querySelectorAll('article[data-testid="tweet"]')].map((a) => {
           const href = a.querySelector('a[href*="/status/"] time')?.closest('a')?.getAttribute('href') ?? '';
@@ -132,9 +157,57 @@ try {
   );
 
   // Show button: reveals without opening the post.
-  await notifications.page.click('article[data-xas-post="4001"] [data-xas-show]');
+  await notifications.page.click('article[data-xas-post="4001"] [data-xas-act="show"]');
   const revealed = await notifications.page.$eval('article[data-xas-post="4001"]', (a) => a.hasAttribute('data-xas-revealed'));
   check('Show button reveals the post', revealed && notifications.page.url().endsWith('/notifications/mentions'));
+
+  // Corrections from the page: "Not abusive" brings the post back and is recorded.
+  const attrOf = (page: Page, id: string) =>
+    page.evaluate((postId) => document.querySelector(`a[href$="/status/${postId}"]`)?.closest('article')?.getAttribute('data-xas') ?? null, id);
+  await notifications.page.evaluate(() => (document.querySelector('article[data-xas-post="4003"] [data-xas-act="not-abusive"]') as HTMLElement).click());
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const store = async () => {
+    const page = await browser.newPage();
+    await page.goto(`chrome-extension://${extensionId}/popup.html`);
+    const data = (await page.evaluate('chrome.storage.local.get(null)')) as {
+      reviewLog?: { postId: string; label?: string; reasons: string[] }[];
+      overrides?: { notAbusive: string[] };
+      muteState?: { mutes: { handle: string; reason: string }[] };
+    };
+    await page.close();
+    return data;
+  };
+  let stored3 = await store();
+  check(
+    '"Not abusive" shows the post again and is recorded',
+    (await attrOf(notifications.page, '4003')) === null &&
+      stored3.reviewLog?.find((e) => e.postId === '4003')?.label === 'not-abusive' &&
+      stored3.overrides?.notAbusive.includes('4003') === true,
+    `review entries: ${stored3.reviewLog?.length}`,
+  );
+
+  // "Mute on X" clicks X's own "Mute @handle" and mutes here too.
+  await notifications.page.evaluate(() => (document.querySelector('article[data-xas-post="4001"] [data-xas-act="mute-on-x"]') as HTMLElement).click());
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const menuClicks = await notifications.page.evaluate(() => (window as unknown as { __xMenuClicks?: string[] }).__xMenuClicks ?? []);
+  stored3 = await store();
+  check(
+    '"Mute on X" clicks X’s Mute item and mutes locally',
+    same(menuClicks, ['Mute @kattar_x']) && stored3.muteState?.mutes.some((m) => m.handle === 'kattar_x' && m.reason === 'manual') === true,
+    JSON.stringify(menuClicks),
+  );
+
+  const review = await browser.newPage();
+  await review.setViewport({ width: 900, height: 900 });
+  await review.goto(`chrome-extension://${extensionId}/review.html`);
+  await review.waitForSelector('article.entry', { timeout: 5000 });
+  const reviewed = await review.evaluate(() => ({
+    entries: document.querySelectorAll('article.entry').length,
+    exportLabel: [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Export labelled'))?.textContent,
+  }));
+  check('review page lists hidden posts with reasons', reviewed.entries >= 5 && reviewed.exportLabel === 'Export labelled posts (1)', JSON.stringify(reviewed));
+  await review.screenshot({ path: join(shotsDir, 'review.png'), fullPage: true });
+  await review.close();
 
   // Repeat offender → automatic mute → hidden everywhere as muted.
   pages['/home'] = fakePage('synthetic-home-for-you.html', { url: API.home.url, via: 'fetch' }, repeatOffenderArticles());
