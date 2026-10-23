@@ -3,7 +3,8 @@
  * one-file fix (like selectors.ts for the DOM). Checked against maintained
  * open-source X clients, Oct 2026: GraphQL users keep handle, name and
  * creation date under `core` (older responses: `legacy`), the avatar under
- * `avatar.image_url`, and counts under `legacy`.
+ * `avatar.image_url`, and counts under `legacy`. Whether you follow an
+ * account is `relationship_perspectives.following` (older: `legacy.following`).
  */
 import type { AccountRecord } from '@/core/signals/suspicion';
 
@@ -18,6 +19,8 @@ export interface PostRecord {
   createdAt?: number;
   inReplyToStatusId?: string;
   inReplyToHandle?: string;
+  /** The post this one quotes. */
+  quotedId?: string;
 }
 
 type Obj = Record<string, unknown>;
@@ -40,6 +43,7 @@ export function readGraphqlUser(obj: Obj): AccountRecord | null {
     defaultAvatar: bool(legacy.default_profile_image) ?? (imageUrl ? isDefaultAvatarUrl(imageUrl) : undefined),
     bio: str(legacy.description) ?? str(asObj(obj.profile_bio)?.description),
     blueVerified: bool(obj.is_blue_verified),
+    youFollow: bool(asObj(obj.relationship_perspectives)?.following) ?? bool(legacy.following),
     source: 'api',
   };
 }
@@ -60,13 +64,15 @@ export function readRestUser(obj: Obj): AccountRecord | null {
     defaultAvatar: bool(obj.default_profile_image) ?? (imageUrl ? isDefaultAvatarUrl(imageUrl) : undefined),
     bio: str(obj.description),
     blueVerified: bool(obj.is_blue_verified),
+    youFollow: bool(obj.following),
     source: 'api',
   };
 }
 
 /**
  * GraphQL tweet: { rest_id, legacy: { full_text, lang, created_at, user_id_str,
- * in_reply_to_status_id_str, in_reply_to_screen_name }, note_tweet, core.user_results.result }.
+ * in_reply_to_status_id_str, in_reply_to_screen_name, quoted_status_id_str },
+ * note_tweet, core.user_results.result, quoted_status_result.result }.
  * Also matches the inner `tweet` of TweetWithVisibilityResults, which has the same shape.
  */
 export function readGraphqlTweet(obj: Obj): PostRecord | null {
@@ -83,6 +89,7 @@ export function readGraphqlTweet(obj: Obj): PostRecord | null {
     createdAt: date(legacy.created_at),
     inReplyToStatusId: str(legacy.in_reply_to_status_id_str),
     inReplyToHandle: str(legacy.in_reply_to_screen_name),
+    quotedId: str(legacy.quoted_status_id_str) ?? str(asObj(asObj(obj.quoted_status_result)?.result)?.rest_id),
   };
 }
 
@@ -98,6 +105,7 @@ export function readRestTweet(obj: Obj): PostRecord | null {
     createdAt: date(obj.created_at),
     inReplyToStatusId: str(obj.in_reply_to_status_id_str),
     inReplyToHandle: str(obj.in_reply_to_screen_name),
+    quotedId: str(obj.quoted_status_id_str),
   };
 }
 

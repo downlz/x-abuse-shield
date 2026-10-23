@@ -10,6 +10,8 @@ export interface AccountRecord {
   defaultAvatar?: boolean;
   bio?: string;
   blueVerified?: boolean;
+  /** The logged-in user follows this account. */
+  youFollow?: boolean;
   /** 'dom' records only know the handle and avatar. */
   source: 'api' | 'dom';
 }
@@ -57,6 +59,8 @@ export function assessAccount(
   options: { weights: SignalWeights; bioKeywords: string[] },
   now: number,
 ): Assessment {
+  // You chose to follow them: not a throwaway account to be wary of.
+  if (account.youFollow) return { score: 0, level: 'low', reasons: [] };
   const { weights } = options;
   let score = 0;
   const reasons: string[] = [];

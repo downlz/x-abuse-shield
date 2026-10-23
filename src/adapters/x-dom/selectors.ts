@@ -17,6 +17,8 @@ export const X = {
   verifiedBadge: 'svg[data-testid="icon-verified"]',
   /** A quoted post is a div with role="link" inside the article. (X's plain <a> links carry role="link" too.) */
   quoteCard: 'div[role="link"]',
+  /** The line above a repost, "<name> reposted", linking to the reposter's profile. Also "Pinned" (no link). */
+  socialContext: '[data-testid="socialContext"]',
   /** "For you" is the first tab on /home, "Following" the second. Text is localised, so match by position. */
   homeTabs: '[data-testid="primaryColumn"] [role="tablist"] [role="tab"]',
   /** The logged-in user's profile link in the side navigation: href="/<handle>". */
@@ -33,4 +35,6 @@ export const X = {
 /** /<handle>/status/<id> — a post opened on its own page, with its replies. */
 export const THREAD_PATH = /^\/[A-Za-z0-9_]{1,20}\/status\/(\d+)/;
 export const STATUS_HREF = /\/status\/(\d+)/;
+/** A profile link: /<handle>. */
+export const PROFILE_HREF = /^\/([A-Za-z0-9_]{1,15})$/;
 export const NOTIFICATIONS_PATH = /^\/notifications(\/|$)/;

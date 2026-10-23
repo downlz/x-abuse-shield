@@ -1,9 +1,9 @@
 import { KEYS, loadMuteState, loadOverrides, loadSettings, toMuteState, toOverrides } from '@/adapters/storage/extension-storage';
 import { onRecords, type RecordsPayload } from '@/adapters/x-api/bridge';
 import { captureFixture, downloadFile } from '@/adapters/x-dom/capture-fixture';
-import { extractPost } from '@/adapters/x-dom/extract';
 import { muteOnX } from '@/adapters/x-dom/mute-on-x';
 import { injectStyles, onPlaceholderAction } from '@/adapters/x-dom/render';
+import { X } from '@/adapters/x-dom/selectors';
 import { migrateSettings } from '@/core/config/migrate';
 import type { Message, ScoreReply } from '@/shared/messages';
 import { ContentPipeline } from './pipeline';
@@ -41,8 +41,8 @@ export default defineContentScript({
     early.forEach((payload) => pipeline!.addRecords(payload));
     pipeline.updateOverrides(overrides.notAbusive);
 
-    onPlaceholderAction((action, postId, article) => {
-      const handle = extractPost(article)?.handle;
+    // `handle` is the account the placeholder is about: the author, a quoted author, or a muted reposter.
+    onPlaceholderAction((action, postId, target, handle) => {
       switch (action) {
         case 'show':
           return pipeline!.reveal(postId);
@@ -55,9 +55,11 @@ export default defineContentScript({
         case 'unmute':
           if (handle) send({ type: 'unmute', handle });
           return;
-        case 'mute-on-x':
-          if (handle) void runMuteOnX(article, handle);
+        case 'mute-on-x': {
+          const article = target.closest(X.post);
+          if (handle && article) void runMuteOnX(article, handle);
           return;
+        }
       }
     });
     pipeline.attach();

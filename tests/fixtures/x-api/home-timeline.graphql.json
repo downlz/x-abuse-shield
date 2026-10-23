@@ -78,6 +78,55 @@
                 }
               },
               {
+                "entryId": "tweet-2003",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "__typename": "Tweet",
+                        "rest_id": "2003",
+                        "quoted_status_result": {
+                          "result": {
+                            "__typename": "Tweet",
+                            "rest_id": "1990",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "__typename": "User",
+                                  "rest_id": "9002",
+                                  "is_blue_verified": false,
+                                  "core": { "screen_name": "troll_acct", "name": "Troll", "created_at": "Thu Jun 04 08:00:00 +0000 2020" },
+                                  "avatar": { "image_url": "https://pbs.twimg.com/profile_images/7/troll_normal.jpg" },
+                                  "legacy": { "followers_count": 840, "friends_count": 610, "description": "" }
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "id_str": "1990",
+                              "full_text": "@newsdesk shut the fuck up, nobody asked",
+                              "lang": "en",
+                              "created_at": "Fri Oct 23 12:00:00 +0000 2026",
+                              "user_id_str": "9002"
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "2003",
+                          "full_text": "This is the kind of reply people get. Not okay.",
+                          "lang": "en",
+                          "created_at": "Fri Oct 23 13:00:00 +0000 2026",
+                          "user_id_str": "8003",
+                          "is_quote_status": true,
+                          "quoted_status_id_str": "1990"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
                 "entryId": "tweet-2005",
                 "content": {
                   "entryType": "TimelineTimelineItem",
@@ -100,7 +149,7 @@
                               }
                             }
                           },
-                          "note_tweet": { "note_tweet_results": { "result": { "text": "A long post that the page cuts off behind Show more. The full text only arrives in the API response, and it ends with an insult: you absolute moron." } } },
+                          "note_tweet": { "note_tweet_results": { "result": { "text": "A long post that the page cuts off behind Show more. The full text only arrives in the API response, and it ends with an insult: you absolute dickhead." } } },
                           "legacy": {
                             "id_str": "2005",
                             "full_text": "A long post that the page cuts off behind Show more. The full text only arrives…",

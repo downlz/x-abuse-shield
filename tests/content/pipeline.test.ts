@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { collectRecords } from '@/adapters/x-api/collect';
+import { quoteCard } from '@/adapters/x-dom/extract';
 import { X } from '@/adapters/x-dom/selectors';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import type { Settings } from '@/core/config/schema';
@@ -336,6 +337,113 @@ describe('AI model tier', () => {
     await settle();
     // Generated handle + default avatar = medium suspicion: a reply's mild word needs toxicity ≥ 0.25.
     expect(treatments()['3007']).toBe('blur');
+  });
+});
+
+/** Copies a post's timeline row under a new id with new text (and optional extra markup), as X would add it. */
+function addPost(sourceId: string, id: string, text: string, prepend = ''): Element {
+  const source = document.querySelector(`a[href$="/status/${sourceId}"]`)!.closest(X.timelineCell)!;
+  const cell = source.cloneNode(true) as Element;
+  cell.querySelectorAll('a[href*="/status/"]').forEach((a) => a.setAttribute('href', a.getAttribute('href')!.replace(sourceId, id)));
+  cell.querySelector(X.postText)!.textContent = text;
+  if (prepend) cell.querySelector(X.post)!.insertAdjacentHTML('afterbegin', prepend);
+  source.parentElement!.append(cell);
+  return cell.querySelector(X.post)!;
+}
+
+const homeRecords = () => ({ ...collectRecords(loadJsonFixture('home-timeline.graphql.json')), operation: 'HomeTimeline' });
+const buttons = (el: Element) => [...el.querySelectorAll(':scope > .xas-placeholder [data-xas-act]')].map((b) => b.getAttribute('data-xas-act'));
+
+describe('edge cases', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-home-for-you.html'));
+
+  it('reads the full text of a long post that the page cuts off behind "Show more"', () => {
+    addPost('2001', '2005', 'A long post that the page cuts off behind Show more. The full text only arrives…');
+    const { pipeline } = setup('/home');
+    pipeline.addRecords(homeRecords());
+    pipeline.attach();
+    expect(treatments()['2005']).toBe('blur');
+  });
+
+  it('hides reposts by a muted account, whoever wrote the post', () => {
+    const repost = addPost('2001', '2006', 'Lovely sunset today', '<a href="/Loud_Reposter" role="link"><span data-testid="socialContext">Loud reposted</span></a>');
+    const muteState: MuteState = {
+      mutes: [{ handle: 'loud_reposter', mutedAt: NOW - 1000, expiresAt: null, reason: 'manual', evidence: [] }],
+      strikes: [],
+    };
+    setup('/home', { muteState }).pipeline.attach();
+    expect(treatments()).toMatchObject({ '2001': null, '2006': 'collapse' });
+    expect(placeholderText('2006')).toContain('Muted @Loud_Reposter');
+    expect(placeholderText('2006')).toContain('reposted by a muted account');
+    // Unmute acts on the reposter, not the author.
+    expect(repost.getAttribute('data-xas-handle')).toBe('Loud_Reposter');
+    expect(buttons(repost)).toEqual(['show', 'unmute']);
+  });
+
+  it('scores a quoted post on its own and hides just the quote card', () => {
+    const { pipeline, strikes, entries } = setup('/home');
+    pipeline.attach();
+    const article = document.querySelector('a[href$="/status/2003"]')!.closest(X.post)!;
+    const card = quoteCard(article)!;
+    // Without X's data the quoted post has no id, so it's left alone.
+    expect(card.hasAttribute('data-xas')).toBe(false);
+
+    pipeline.addRecords(homeRecords());
+    expect(treatments()['2003']).toBeNull();
+    expect(card.getAttribute('data-xas')).toBe('blur');
+    expect(card.querySelector('.xas-placeholder')?.textContent).toContain('Quoted post hidden by Abuse Shield');
+    expect(buttons(card)).toEqual(['show', 'not-abusive', 'mute']);
+    expect(card.getAttribute('data-xas-handle')).toBe('troll_acct');
+    expect(strikes).toContainEqual(expect.objectContaining({ handle: 'troll_acct', postId: '1990' }));
+    // Quoted in a timeline post, it's judged as the standalone post it was.
+    expect(entries.find((e) => e.postId === '1990')).toMatchObject({ url: 'https://x.com/troll_acct/status/1990', directed: false });
+
+    pipeline.reveal('1990');
+    expect(card.hasAttribute('data-xas-revealed')).toBe(true);
+    pipeline.markNotAbusive('1990');
+    expect(card.hasAttribute('data-xas')).toBe(false);
+  });
+
+  it('collapses a quote by a muted account', () => {
+    const muteState: MuteState = {
+      mutes: [{ handle: 'troll_acct', mutedAt: NOW - 1000, expiresAt: null, reason: 'strikes', evidence: [] }],
+      strikes: [],
+    };
+    const { pipeline } = setup('/home', { muteState });
+    pipeline.addRecords(homeRecords());
+    pipeline.attach();
+    const card = quoteCard(document.querySelector('a[href$="/status/2003"]')!.closest(X.post)!)!;
+    expect(card.getAttribute('data-xas')).toBe('collapse');
+    expect(card.textContent).toContain('quoted post · muted after repeated abuse');
+  });
+
+  it('can leave accounts you follow alone (off by default)', () => {
+    const records = homeRecords();
+    records.users.find((u) => u.handle === 'Srihars47664037')!.youFollow = true;
+    let { pipeline } = setup('/home');
+    pipeline.addRecords(records);
+    pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    ({ pipeline } = setup('/home', { settings: { exemptFollowing: true } }));
+    pipeline.addRecords(records);
+    pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('reads emoji-only posts: 🖕 anywhere, 🤡 only in replies from suspicious accounts', () => {
+    addPost('2001', '2007', '🖕🖕');
+    addPost('2001', '2008', '🤡🤡🤡');
+    setup('/home').pipeline.attach();
+    expect(treatments()).toMatchObject({ '2007': 'blur', '2008': null });
+
+    loadHtmlFixture('synthetic-thread.html');
+    addPost('3007', '3099', '🤡🤡🤡');
+    const { pipeline } = setup('/LakotaMan1/status/3000');
+    pipeline.addRecords({ ...collectRecords(loadJsonFixture('tweet-detail.legacy-shape.json')), operation: 'TweetDetail' });
+    pipeline.attach();
+    expect(treatments()['3099']).toBe('blur');
   });
 });
 

@@ -52,7 +52,7 @@ for (const [file, label] of sources) {
   loaded.push(`${items.length} ${label} (\`${file}\`)`);
 }
 
-const lexicon = new Lexicon({ languages: { en: true, hi: true, hinglish: true }, customBlock: [], customAllow: [] });
+const lexicon = new Lexicon({ languages: { en: true, hi: true, hinglish: true, emoji: true }, customBlock: [], customAllow: [] });
 const classifier = await loadToxicityClassifier({ cacheDir: join(root, '.cache', 'models') });
 const modelScores: CategoryScores[] = [];
 for (let i = 0; i < posts.length; i += 8) modelScores.push(...(await classifier.classify(posts.slice(i, i + 8).map((p) => p.text))));

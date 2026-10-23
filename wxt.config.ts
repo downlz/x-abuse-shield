@@ -11,8 +11,18 @@ import { ortInPlacePlugin } from './scripts/ort-in-place-plugin';
  */
 const ORT_SOURCE = resolve('node_modules/onnxruntime-web/dist/ort.webgpu.mjs');
 
-/** `npm run model:build` puts the .ort model here; without it the extension downloads the .onnx instead. */
-const BUNDLED_MODEL = existsSync(join('public', BUNDLED_MODEL_DIR, MODEL_ID, BUNDLED_MODEL_FILE));
+/**
+ * Where the in-place .ort model comes from (see docs/PLAN.md, "Model source"):
+ * - bundled: `npm run model:build` output in public/models ships inside the extension (~331 MB);
+ *   WXT_BUNDLE_MODEL=false leaves it out.
+ * - hosted: WXT_MODEL_URL=https://…/ (a folder laid out like public/models) is downloaded on first use.
+ * - otherwise the original .onnx is downloaded from Hugging Face (more memory).
+ */
+const BUNDLED_MODEL =
+  process.env.WXT_BUNDLE_MODEL !== 'false' && existsSync(join('public', BUNDLED_MODEL_DIR, MODEL_ID, BUNDLED_MODEL_FILE));
+const MODEL_URL = BUNDLED_MODEL ? '' : (process.env.WXT_MODEL_URL ?? '').replace(/(?<=.)\/?$/, '/');
+
+const CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
 
 export default defineConfig({
   srcDir: 'src',
@@ -23,20 +33,54 @@ export default defineConfig({
       alias: [{ find: /^onnxruntime-web\/webgpu$/, replacement: ORT_SOURCE }],
     },
     plugins: [ortInPlacePlugin(ORT_SOURCE)],
-    define: { __BUNDLED_MODEL__: JSON.stringify(BUNDLED_MODEL) },
-  }),
-  manifest: {
-    name: 'X Abuse Shield',
-    description: 'On-device multilingual abuse filter for x.com',
-    permissions: ['offscreen', 'storage', 'unlimitedStorage', 'alarms'],
-    // MV3 forbids remote code: ONNX Runtime's .wasm/.mjs ship inside the
-    // extension (public/ort). Model weights are data: shipped or fetched once.
-    content_security_policy: {
-      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    define: {
+      __BUNDLED_MODEL__: JSON.stringify(BUNDLED_MODEL),
+      __MODEL_URL__: JSON.stringify(MODEL_URL),
     },
-    // Cross-origin isolation enables SharedArrayBuffer, which ONNX Runtime
-    // needs for multi-threaded inference.
-    cross_origin_embedder_policy: { value: 'require-corp' },
-    cross_origin_opener_policy: { value: 'same-origin' },
+  }),
+  zip: {
+    // The sources zip (for AMO review) is rebuilt with `npm install` and `npm run model:build`. Like .gitignore,
+    // it leaves out generated files and local-only data: real X screenshots, your labelled posts, test results.
+    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl'],
+  },
+  hooks: {
+    'build:publicAssets': (_wxt, files) => {
+      if (BUNDLED_MODEL) return;
+      const models = `${BUNDLED_MODEL_DIR}`;
+      files.splice(0, files.length, ...files.filter((file) => !file.relativeDest.replaceAll('\\', '/').startsWith(models)));
+    },
+  },
+  manifest: ({ browser }) => {
+    const common = {
+      name: 'X Abuse Shield',
+      description: 'On-device multilingual abuse filter for x.com',
+    };
+    if (browser === 'firefox') {
+      // Manifest V2: a persistent background page hosts the model in a Web Worker
+      // (Firefox has no offscreen documents). MAIN-world content scripts need Firefox 128.
+      return {
+        ...common,
+        permissions: ['storage', 'unlimitedStorage', 'alarms'],
+        content_security_policy: CSP,
+        browser_specific_settings: {
+          gecko: {
+            id: 'x-abuse-shield@local',
+            strict_min_version: '128.0',
+            data_collection_permissions: { required: ['none'] },
+          },
+        },
+      };
+    }
+    return {
+      ...common,
+      permissions: ['offscreen', 'storage', 'unlimitedStorage', 'alarms'],
+      // MV3 forbids remote code: ONNX Runtime's .wasm/.mjs ship inside the
+      // extension (public/ort). Model weights are data: shipped or fetched once.
+      content_security_policy: { extension_pages: CSP },
+      // Cross-origin isolation enables SharedArrayBuffer, which ONNX Runtime
+      // needs for multi-threaded inference. (Firefox doesn't offer this to extensions.)
+      cross_origin_embedder_policy: { value: 'require-corp' },
+      cross_origin_opener_policy: { value: 'same-origin' },
+    };
   },
 });

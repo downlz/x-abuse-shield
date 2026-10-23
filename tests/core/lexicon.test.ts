@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Lexicon } from '@/core/lexicon/match';
 import { tokenize } from '@/core/lexicon/normalize';
 
-const all = new Lexicon({ languages: { en: true, hi: true, hinglish: true }, customBlock: [], customAllow: [] });
+const all = new Lexicon({ languages: { en: true, hi: true, hinglish: true, emoji: true }, customBlock: [], customAllow: [] });
 const strong = (text: string) => all.match(text).hits.filter((h) => h.strength === 'strong');
 const mild = (text: string) => all.match(text).hits.filter((h) => h.strength === 'mild');
 
@@ -17,6 +17,32 @@ describe('normalize', () => {
     expect(tokenize('fuc#ing')[0]!.masked).toBe(true);
     // Nukta and chandrabindu folded, so either spelling matches.
     expect(exact('भोसड़ीके माँ')).toEqual(exact('भोसडीके मां'));
+    // Bidi controls (right-to-left mark, override, isolate) can't split a word.
+    expect(exact('chu‏tiya f‮uck sh⁦it')).toEqual(['chutiya', 'fuck', 'shit']);
+  });
+});
+
+describe('emoji', () => {
+  it('counts the middle finger on its own, once, whatever the skin tone', () => {
+    expect(strong('🖕🖕🖕').map((h) => [h.term, h.category, h.source])).toEqual([['🖕', 'insult', 'emoji']]);
+    expect(strong('@someone 🖕🏽').map((h) => h.matched)).toEqual(['🖕']);
+  });
+
+  it('treats 🤡 and 💩 as mild', () => {
+    expect(strong('🤡🤡🤡 💩')).toEqual([]);
+    expect(mild('🤡🤡🤡 💩').map((h) => h.term)).toEqual(['🤡', '💩']);
+  });
+
+  it('ignores everyday emoji, and all emoji when the list is off', () => {
+    expect(all.match('😂😂🔥🙏 great match 👍').hits).toEqual([]);
+    const off = new Lexicon({ languages: { en: true, hi: true, hinglish: true, emoji: false }, customBlock: [], customAllow: [] });
+    expect(off.match('🖕').hits).toEqual([]);
+  });
+
+  it('takes emoji in the custom block and allow lists', () => {
+    const custom = new Lexicon({ languages: { en: true, hi: true, hinglish: true, emoji: true }, customBlock: ['🐍'], customAllow: ['🤡️'] });
+    expect(custom.match('you 🐍').hits.map((h) => [h.term, h.strength, h.source])).toEqual([['🐍', 'strong', 'custom']]);
+    expect(custom.match('🤡🤡').hits).toEqual([]);
   });
 });
 
@@ -118,11 +144,11 @@ describe('benign idioms', () => {
 
 describe('options', () => {
   it('respects language toggles, custom blocks and allows', () => {
-    const noHinglish = new Lexicon({ languages: { en: true, hi: true, hinglish: false }, customBlock: [], customAllow: [] });
+    const noHinglish = new Lexicon({ languages: { en: true, hi: true, hinglish: false, emoji: true }, customBlock: [], customAllow: [] });
     expect(noHinglish.match('Tu ekdum chutiya hai').hits).toEqual([]);
 
     const custom = new Lexicon({
-      languages: { en: true, hi: true, hinglish: true },
+      languages: { en: true, hi: true, hinglish: true, emoji: true },
       customBlock: ['scammer'],
       customAllow: ['pagal'],
     });

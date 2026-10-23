@@ -1,4 +1,6 @@
-import { STATUS_HREF, X } from './selectors';
+import { PROFILE_HREF, STATUS_HREF, X } from './selectors';
+
+const HANDLE_TEXT = /^@([A-Za-z0-9_]{1,15})$/;
 
 export interface DomPost {
   id: string;
@@ -6,8 +8,12 @@ export interface DomPost {
   handle: string;
   /** The post's own text, emoji included; empty for media-only posts. */
   text: string;
-  /** Text of a quoted post, scored separately (Phase 4). */
+  /** Text of a quoted post, scored separately. */
   quotedText?: string;
+  /** Author of a quoted post, without @. */
+  quotedHandle?: string;
+  /** Who reposted it into this timeline, without @. */
+  repostedBy?: string;
   lang?: string;
   /** Epoch ms from the <time datetime>. */
   postedAt?: number;
@@ -31,12 +37,18 @@ export function extractPost(article: Element): DomPost | null {
   const datetime = time?.getAttribute('datetime');
   const postedAt = datetime ? Date.parse(datetime) : NaN;
   const authorBlock = authorLink?.closest(X.postAuthor);
+  // A quote card's author line has no links (the whole card is one): read the "@handle" span.
+  const quotedAuthor = [...(quoteCard(article)?.querySelectorAll(`${X.postAuthor} span`) ?? [])]
+    .map((span) => HANDLE_TEXT.exec(span.textContent?.trim() ?? '')?.[1])
+    .find(Boolean);
 
   return {
     id,
     handle,
     text: own ? readText(own) : '',
     quotedText: quoted ? readText(quoted) : undefined,
+    quotedHandle: quotedAuthor,
+    repostedBy: reposter(article),
     lang: own?.getAttribute('lang') ?? undefined,
     postedAt: Number.isNaN(postedAt) ? undefined : postedAt,
     avatarUrl: article.querySelector(X.postAvatar)?.getAttribute('src') ?? undefined,
@@ -44,9 +56,20 @@ export function extractPost(article: Element): DomPost | null {
   };
 }
 
+/** The card of a post quoted inside this one: the role="link" block that has its own author line. */
+export function quoteCard(article: Element): Element | undefined {
+  return [...article.querySelectorAll(X.quoteCard)].find((card) => card !== article && card.querySelector(X.postAuthor));
+}
+
 function insideQuote(el: Element, article: Element): boolean {
   const card = el.closest(X.quoteCard);
   return !!card && card !== article && article.contains(card);
+}
+
+function reposter(article: Element): string | undefined {
+  const context = article.querySelector(X.socialContext);
+  const link = context?.closest('a[href]') ?? context?.querySelector('a[href]');
+  return PROFILE_HREF.exec(link?.getAttribute('href') ?? '')?.[1];
 }
 
 /** Text content with emoji images replaced by their alt text ("😂"). */

@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest';
 import { detectPageContext, focalPostId, ownHandle } from '@/adapters/x-dom/context';
-import { extractPost } from '@/adapters/x-dom/extract';
+import { extractPost, quoteCard } from '@/adapters/x-dom/extract';
 import { findMuteItem, muteOnX } from '@/adapters/x-dom/mute-on-x';
-import { onPlaceholderAction, render } from '@/adapters/x-dom/render';
+import { onPlaceholderAction, render, syncTheme } from '@/adapters/x-dom/render';
 import { X } from '@/adapters/x-dom/selectors';
 import { loadHtmlFixture as loadFixture } from '../helpers';
 
@@ -40,8 +40,25 @@ describe('home timeline (synthetic)', () => {
       handle: 'newsdesk',
       text: 'This is the kind of reply people get. Not okay.',
       quotedText: 'shut the fuck up, nobody asked',
+      quotedHandle: 'troll_acct',
       blueVerified: true,
     });
+    expect(quoteCard(articles()[2]!)?.textContent).toContain('@troll_acct');
+    expect(quoteCard(articles()[0]!)).toBeUndefined();
+  });
+
+  it('reads who reposted a post from the line above it', () => {
+    const article = articles()[0]!;
+    const context = (html: string) => {
+      article.querySelector('[data-testid="socialContext"]')?.closest('div.context')?.remove();
+      article.insertAdjacentHTML('afterbegin', `<div class="context">${html}</div>`);
+      return extractPost(article)?.repostedBy;
+    };
+    expect(context('<a href="/Loud_Reposter" role="link"><span data-testid="socialContext">Loud reposted</span></a>')).toBe('Loud_Reposter');
+    expect(context('<span data-testid="socialContext"><a href="/other1">Other reposted</a></span>')).toBe('other1');
+    // "Pinned" has no link; community posts link to the community.
+    expect(context('<span data-testid="socialContext">Pinned</span>')).toBeUndefined();
+    expect(context('<a href="/i/communities/123"><span data-testid="socialContext">Cricket</span></a>')).toBeUndefined();
   });
 
   it('skips articles without a permalink (ads)', () => {
@@ -132,16 +149,46 @@ describe('render', () => {
     expect(article.querySelector('.xas-placeholder')).toBeNull();
   });
 
-  it('reports placeholder clicks with the post id, without letting X see them', () => {
+  it('reports placeholder clicks with the post id and account, without letting X see them', () => {
     const article = articles()[1]!;
-    render(article, '2002', { action: 'collapse', label: 'x', detail: 'y', actions: ['not-abusive'] }, false);
+    render(article, '2002', { action: 'collapse', label: 'x', detail: 'y', actions: ['not-abusive'], handle: 'Srihars47664037' }, false);
     const clicks: string[] = [];
     let xSawIt = false;
     article.addEventListener('click', () => (xSawIt = true));
-    onPlaceholderAction((action, postId) => clicks.push(`${action}:${postId}`));
+    onPlaceholderAction((action, postId, _target, handle) => clicks.push(`${action}:${postId}:${handle}`));
     (article.querySelector('[data-xas-act="not-abusive"]') as HTMLElement).click();
-    expect(clicks).toEqual(['not-abusive:2002']);
+    expect(clicks).toEqual(['not-abusive:2002:Srihars47664037']);
     expect(xSawIt).toBe(false);
+  });
+
+  it('hides just a quote card, which collapses instead of removing the row', () => {
+    const article = articles()[2]!;
+    const card = quoteCard(article)!;
+    render(card, '1990', { action: 'remove', label: 'Quoted post hidden', detail: 'insult', actions: ['mute'], handle: 'troll_acct' }, false);
+    expect(card.getAttribute('data-xas')).toBe('collapse');
+    expect(article.hasAttribute('data-xas')).toBe(false);
+    expect(article.closest(X.timelineCell)!.hasAttribute('data-xas-cell')).toBe(false);
+    const clicks: string[] = [];
+    onPlaceholderAction((action, postId, target, handle) => clicks.push(`${action}:${postId}:${handle}:${target === card}`));
+    (card.querySelector('[data-xas-act="mute"]') as HTMLElement).click();
+    expect(clicks).toEqual(['mute:1990:troll_acct:true']);
+  });
+
+  it('follows X’s theme colours, and writes nothing until they change', () => {
+    document.body.style.backgroundColor = 'rgb(21, 32, 43)';
+    syncTheme(document);
+    const theme = () => document.getElementById('xabuseshield-theme')?.textContent;
+    expect(theme()).toBe(':root { --xas-bg: rgb(21, 32, 43); --xas-fg: #e7e9ea; }');
+    document.body.style.backgroundColor = 'rgb(255, 255, 255)';
+    syncTheme(document);
+    expect(theme()).toContain('--xas-fg: #0f1419');
+    expect(document.querySelectorAll('#xabuseshield-theme')).toHaveLength(1);
+  });
+
+  it('lets placeholder text pick its own direction (right-to-left scripts)', () => {
+    const article = articles()[1]!;
+    render(article, '2002', { action: 'blur', label: 'x', detail: 'insult · word list: “کتا”', actions: [] }, false);
+    expect(article.querySelector<HTMLElement>('.xas-placeholder > span')?.dir).toBe('auto');
   });
 
   it('removes the whole timeline row, and restores it when revealed', () => {

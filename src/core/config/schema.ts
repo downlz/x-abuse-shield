@@ -34,6 +34,8 @@ export interface Settings {
     en: boolean;
     hi: boolean;
     hinglish: boolean;
+    /** Insulting emoji (🖕; 🤡 and 💩 as mild terms). */
+    emoji: boolean;
     /** Extra words or phrases, treated as strong insults. */
     customBlock: string[];
     /** Words or phrases that never count, even if built in. */
@@ -41,6 +43,8 @@ export interface Settings {
   };
   /** Handles (without @) that are never filtered. */
   allowlist: string[];
+  /** Never filter accounts you follow (known from X's data). Followed accounts never count as suspicious either way. */
+  exemptFollowing: boolean;
   strikes: {
     enabled: boolean;
     count: number;

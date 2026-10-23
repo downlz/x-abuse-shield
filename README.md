@@ -4,9 +4,10 @@ On-device, multilingual abuse filter for x.com. Scores posts with
 [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
 via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
 
-> **Status:** Phases 1–3 are built: word lists, account checks, copy-paste detection (including
-> near-duplicates), strikes and local mutes, the on-device AI model, and the review page with
-> "Not abusive", "Mute on X" and calibration export. Phase 4 (hardening) is next. See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–4 are built, for Chrome (and Brave) and Firefox: word lists, account checks,
+> copy-paste detection, strikes and local mutes, the on-device AI model, the review page, and
+> hardening for quotes, reposts, emoji, long posts and dark themes. A store submission kit is in
+> [docs/STORE.md](docs/STORE.md). See [docs/PLAN.md](docs/PLAN.md).
 
 ## Goal
 
@@ -22,6 +23,9 @@ Abuse Shield judges both **what a post says** and **who is saying it**, entirely
 - Disguised spellings are decoded before matching: `f*ck`, `fuuuck`, leetspeak.
 - Mild words such as *pagal* or *gadha* only count when the model also finds the post toxic, so friendly teasing passes.
 - Threat and extortion phrases are caught even without bad words ("I know where you live"). Harmless idioms ("kill it at your interview") are ignored.
+- Emoji insults count too: 🖕 on its own, 🤡 and 💩 only in replies from suspicious accounts. (The model barely reacts to emoji.)
+- Long posts are read in full, including the text behind "Show more".
+- A quoted post is judged on its own: if only the quote is abusive, only the quote is hidden.
 
 **Looking at who is posting**
 - Account signals: account age, follower count, following-to-follower ratio, default avatar, auto-generated handles like `rahul12345678`, and your own bio keywords.
@@ -30,16 +34,18 @@ Abuse Shield judges both **what a post says** and **who is saying it**, entirely
 
 **Dealing with repeat offenders**
 - Strikes: 3 flagged posts in 7 days mutes the author automatically, for 24 hours, 7 days, 30 days or forever.
-- Muted authors are hidden everywhere: For you, Following and replies.
+- Muted authors are hidden everywhere: For you, Following, replies, Notifications and quotes. Their reposts are hidden too.
 - An optional "Mute on X" button, which you click yourself.
 
 **Staying fair and in control**
 - By default posts are blurred with click-to-reveal; threats and severe abuse are collapsed. Nothing is deleted or blocked on X.
 - A review log shows why each post was hidden: scores, matched words, account reasons, and other members of a copy-paste group. From there you can mark a post "Not abusive", unmute or allowlist.
 - Relaxed / Balanced / Strict presets, per-category sliders, custom word lists, and import/export of your settings.
+- Accounts you follow never count as suspicious, and an option leaves them unfiltered altogether.
+- Placeholders follow X's Default, Dim and Lights out themes.
 
 **Private and fast**
-- Everything runs on your device. The only network call is the one-time model download (~289 MB). Account data is read from what X already sends to the page, so the extension makes no extra requests.
+- Everything runs on your device. The only network call is the one-time model download (~289 MB), and there's none when the model ships inside the extension. Account data is read from what X already sends to the page, so the extension makes no extra requests.
 - Word-list, account and copy-paste checks run before a post appears on screen, so abuse doesn't flash. Model scoring takes about 28 ms per post.
 - The model loads only while an x.com tab is open and unloads after 5 idle minutes. A word-list-only mode is available for low-memory devices.
 
@@ -70,30 +76,47 @@ What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import bloc
 ## Setup
 
 ```sh
-npm install           # also copies ONNX Runtime's wasm into public/ort and generates WXT types
-npm run model:build   # downloads the model once, converts it to run in place → public/models (~300 MB)
-npm run build         # → .output/chrome-mv3
+npm install             # also copies ONNX Runtime's wasm into public/ort and generates WXT types
+npm run model:build     # downloads the model once, converts it to run in place → public/models (~300 MB)
+npm run build           # Chrome / Brave → .output/chrome-mv3
+npm run build:firefox   # Firefox 128+   → .output/firefox-mv2
 ```
 
 `model:build` is optional but recommended: the converted model ships inside the extension and needs far less memory (see below). Without it, the extension downloads the original model on first use instead.
 
-Load it in Chrome or Brave: `chrome://extensions` (or `brave://extensions`) → enable **Developer mode** → **Load unpacked** → pick `.output/chrome-mv3`. Reload any open x.com tabs afterwards — extensions only run on pages opened after they load.
+**Chrome or Brave:** `chrome://extensions` (or `brave://extensions`) → enable **Developer mode** → **Load unpacked** → pick `.output/chrome-mv3`.
+
+**Firefox:** `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → pick `.output/firefox-mv2/manifest.json`. A temporary add-on is removed when Firefox restarts. To keep it, have Mozilla sign it as an unlisted add-on (see [docs/STORE.md](docs/STORE.md)); signing needs the hosted model below, since Firefox Add-ons accepts files up to 200 MB.
+
+Reload any open x.com tabs afterwards — extensions only run on pages opened after they load.
 
 The toolbar popup shows the sensitivity preset, today's counts, the AI model's status and whether the extension can read the current tab. **Settings** covers everything else.
 
 Each hidden post has **Show**, **Not abusive**, **Mute here** and **Mute on X** buttons. **Hidden posts** in the popup opens the review page: why each post was hidden, your labels, mutes and allowlist, and **Export labelled posts** for calibration.
 
-The word lists work straight away. To add the AI model, click **Turn on** in the popup (or **Download (289 MB)** if you skipped `model:build`). It loads while x.com is open — about 500 MB of memory with the shipped model, 850 MB with the downloaded one — and unloads after 5 idle minutes; scoring takes about 30 ms per post.
+The word lists work straight away. To add the AI model, click **Turn on** in the popup (or **Download (289 MB)** if the model isn't shipped). It loads while x.com is open — about 500 MB of memory with the converted model, 850 MB with the original one — and unloads after 5 idle minutes; scoring takes about 30 ms per post. Firefox runs it on a single thread (extensions there can't use shared memory), with similar end-to-end speed in tests.
+
+### Where the model comes from
+
+| Build | Extension size | First use | Memory while loaded (measured in Chrome) |
+|---|---|---|---|
+| `model:build`, then build (default) | ~331 MB | Nothing to download | ~500 MB |
+| Hosted: `WXT_BUNDLE_MODEL=false WXT_MODEL_URL=https://…/` | ~28 MB | Downloads the converted model once (289 MB) | ~500 MB |
+| Neither | ~28 MB | Downloads the original model from Hugging Face (289 MB) | ~850 MB |
+
+The browser can't do the conversion itself (ONNX Runtime's web build has no converter), so a small extension with the low-memory model needs the converted files hosted somewhere: upload the contents of `public/models/` (keeping its folder structure), for example to a Hugging Face repository, and point `WXT_MODEL_URL` at it — `https://huggingface.co/<you>/<repo>/resolve/main/`. Steps are in [docs/STORE.md](docs/STORE.md).
 
 ## Tests
 
 ```sh
-npm test                  # unit + fixture tests (Vitest, happy-dom)
-npm run test:e2e          # builds, then runs the extension in Chrome for Testing against fake x.com pages
-npx tsx scripts/e2e-smoke.ts --idle   # also checks the idle unload (adds ~2 minutes)
+npm test                    # unit + fixture tests (Vitest, happy-dom)
+npm run test:e2e            # builds, then runs the extension in Chrome for Testing against fake x.com pages
+npm run test:e2e:firefox    # the same in your installed Firefox (FIREFOX_PATH to point elsewhere)
+npm run test:e2e:hosted     # builds without the model and serves it from a local "model host" (add -- --firefox)
+npx tsx scripts/e2e-smoke.ts --idle   # also checks the idle unload (adds ~2 minutes; --firefox works too)
 ```
 
-The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup and API responses. The end-to-end run checks word-list verdicts in `requestAnimationFrame`, i.e. before the browser paints, downloads the real model into a fresh profile (~1 minute) to check model verdicts and their latency, and saves screenshots to `spike/results/e2e/`.
+The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup and API responses. The end-to-end run checks word-list verdicts in `requestAnimationFrame`, i.e. before the browser paints, loads the real model into a fresh profile to check model verdicts and their latency, and saves screenshots to `spike/results/e2e/` (`e2e-firefox/` for Firefox, which can't screenshot extension pages).
 
 ## Calibration
 
@@ -137,10 +160,10 @@ Fixtures contain the posts that were on screen, so don't publish them.
 | Path | What |
 |---|---|
 | `src/core/` | Platform-neutral engine: word lists, decisions, account suspicion, copy-paste clusters, strikes and mutes, settings. Reused by the mobile ports |
-| `src/adapters/inference/` | Transformers.js classifier and the offscreen document host |
+| `src/adapters/inference/` | The model (in-place `.ort` or Transformers.js), and where it runs: Chrome's offscreen document or Firefox's background worker |
 | `src/adapters/x-dom/` | Everything that touches x.com's DOM; all selectors in `selectors.ts` |
 | `src/adapters/x-api/` | Reads the account and post data X fetches for itself; all field paths in `fields.ts` |
 | `src/adapters/storage/` | `chrome.storage` layout |
-| `src/entrypoints/` | Content scripts (`x.content/`, MAIN-world `x-api.content.ts`), background, popup, options, offscreen document, spike page |
+| `src/entrypoints/` | Content scripts (`x.content/`, MAIN-world `x-api.content.ts`), background, popup, options, offscreen document (Chrome), model worker (Firefox), spike page (Chrome) |
 | `src/ui/` | Shared React hooks, controls and theme for the popup and settings |
 | `scripts/` | Spike runners, end-to-end smoke test, build helpers |

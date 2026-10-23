@@ -1,9 +1,26 @@
 /**
- * Owns the offscreen document that runs the model. MV3 service workers can't
- * spawn the workers ONNX Runtime needs and are killed when idle; an offscreen
- * document lives until we close it.
+ * Chrome: owns the offscreen document that runs the model. MV3 service
+ * workers can't spawn the workers ONNX Runtime needs and are killed when
+ * idle; an offscreen document lives until we close it.
  */
+import type { ScoreReply } from '@/shared/messages';
+import type { ModelRunner } from './model-runner';
+
 const OFFSCREEN_PATH = '/offscreen.html';
+
+export const offscreenRunner: ModelRunner = {
+  async classify(texts) {
+    await ensureOffscreenReady();
+    const reply = (await browser.runtime.sendMessage({ type: 'model:classify', texts })) as ScoreReply | undefined;
+    return reply ?? { ok: false, error: 'No reply from the model' };
+  },
+  async load() {
+    await ensureOffscreenReady();
+    await browser.runtime.sendMessage({ type: 'model:load' });
+  },
+  close: closeOffscreenDocument,
+  isOpen: hasOffscreenDocument,
+};
 
 let creating: Promise<void> | null = null;
 

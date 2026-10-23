@@ -1,10 +1,10 @@
 # x-abuse-shield — Plan
 
-Multilingual, on-device abuse filter for x.com. Chrome extension first, mobile later.
+Multilingual, on-device abuse filter for x.com. Chrome and Firefox extensions first, mobile later.
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **Phase 3 built** — 2026-10-23. Phase 1 validated on live x.com by the user. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
+Status: **Phase 4 built** — 2026-10-24: Firefox build, hosted-model option, edge cases, follow exemption, store kit ([STORE.md](STORE.md), [PRIVACY.md](PRIVACY.md)). Phase 1 validated on live x.com by the user; the Phase 4 edge cases still need a live check. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
 ---
 
@@ -57,10 +57,27 @@ Service worker (background)
    │  account records (7-day TTL) · reply fingerprints (24 h TTL)
    │  creates/closes the offscreen document
    ▼
-Offscreen document (reason: WORKERS)
-   └─ Transformers.js → ONNX Runtime (WASM, int8, multi-threaded)
-      queue: visible posts first, batches of ~8, text cut to 256 tokens
+Offscreen document (reason: WORKERS)       Firefox: a Web Worker owned by the
+   └─ ONNX Runtime (WASM, int8, 4 threads)    persistent MV2 background page (no
+      in-place .ort model; Transformers.js    offscreen API); 1 thread (extensions
+      tokenizer                               can't be cross-origin isolated there)
+      queue: newest first, batches of ~8, text cut to 256 tokens
 ```
+
+The two browsers share everything except where the model runs (`ModelRunner`: `offscreen-host.ts` / `worker-host.ts`) and the manifest (MV3 / MV2, set per browser in `wxt.config.ts`).
+
+### Model source
+
+The model ships or downloads in one of three ways, chosen at build time (`wxt.config.ts`):
+
+| Build | Extension | First use | Memory (Chrome) |
+|---|---|---|---|
+| **Bundled** (default after `npm run model:build`) | ~331 MB | nothing to download | +507 MB |
+| **Hosted** (`WXT_BUNDLE_MODEL=false WXT_MODEL_URL=…`) | ~28 MB | the converted `.ort` + tokenizer downloaded once (289 MB) into the Cache API | +507 MB |
+| **Fallback** (neither) | ~28 MB | the original `.onnx` from Hugging Face via Transformers.js | +850 MB |
+
+- Converting `.onnx` → `.ort` in the browser isn't possible: onnxruntime-web has no model converter or file system, so conversion stays an offline step (`npm run model:build`, onnxruntime-node).
+- Hosted is the only small build with the low-memory model, and the only option for AMO (200 MB file limit). It needs somewhere public to put the files, e.g. a Hugging Face repo (CORS headers included). End-to-end test with a local host: `npm run test:e2e:hosted` (Chrome: downloaded in 7.5 s locally, then reloaded from cache in 3.7 s with no requests; Firefox: 5.1 s, 2.0 s).
 
 `core/` holds platform-neutral logic (no Chrome APIs, no X selectors) so mobile ports reuse it.
 
@@ -109,7 +126,7 @@ From the author record in X's API responses: `created_at`, `followers_count`, `f
 Suspicion = sum, capped at 1 → **low** (< 0.30) · **medium** (0.30–0.59) · **high** (≥ 0.60).
 
 - No record yet (DOM fallback): only avatar and handle can count, so the level is capped at medium.
-- Exempt: allowlisted accounts, own posts, and (Phase 4) accounts you follow.
+- Exempt: allowlisted accounts, own posts, and accounts you follow (from X's data; Phase 4).
 - The subscription badge (`is_blue_verified`) is recorded and shown in the review log, but has weight 0 by default.
 
 ### 5.2 Coordination (copy-paste brigades)
@@ -235,11 +252,18 @@ x-abuse-shield/
 - ✅ Stats on the review page (hidden, reviewed, marked not abusive, top categories and accounts); backup export/import of settings + mutes in Settings
 - Not included: marking a *visible* post as abusive directly on x.com (use "Add a missed post")
 
-### Phase 4 — Hardening & release
-- Edge cases: "Show more", reposts, quotes, emoji-only, themes, RTL
-- "Exempt accounts I follow" (investigate)
-- Firefox desktop build
-- Optional Chrome Web Store kit
+### Phase 4 — Hardening & release ✅ built (edge cases need a live check)
+- ✅ **Firefox desktop build** (`npm run build:firefox`, Firefox 128+): Manifest V2 with a persistent background page that runs the model in a Web Worker (Firefox has no offscreen documents), single-threaded. The same end-to-end suite passes in the installed Firefox 158 over WebDriver BiDi (`npm run test:e2e:firefox`): 17/17, model ready 2–4 s after "Turn on", verdict 205–260 ms after a post appears, unloaded 110 s after a 1-minute idle setting. Memory not yet measured in Firefox
+- ✅ **Hosted model** (see "Model source"): a ~28 MB extension that downloads the in-place `.ort` once. In-browser conversion was investigated and isn't possible
+- ✅ **"Show more":** long posts are scored on their full text from X's data (`note_tweet`), not the truncated page text
+- ✅ **Reposts:** a muted account's reposts are hidden like X's own mute does ("Muted @reposter · reposted by a muted account"; Unmute acts on the reposter). The reposter comes from the "… reposted" line's profile link (`socialContext`); "Pinned" and community labels are ignored
+- ✅ **Quotes:** the quoted post is scored on its own, as a post by its author (strikes and review log included), and only the quote card is hidden ("Quoted post hidden by Abuse Shield"). It needs the quoted post's id from X's data (`quoted_status_result`); without it the quote is left alone. Judged as a standalone post unless it was itself a reply. No "Mute on X" button on quotes (X's ⋯ menu belongs to the quoting post)
+- ✅ **Emoji:** the model barely reacts to emoji (🖕 alone: toxicity 0.05; "@name 🖕": 0.17), so a new emoji list catches 🖕 (strong insult) and 🤡 💩 (mild: only from suspicious accounts in replies). Skin tones are ignored; custom block/allow lists take emoji; a switch under Word lists turns it off
+- ✅ **Themes:** placeholders take X's background and text colours from the body's inline background colour (Default, Dim, Lights out); checked end to end in Dim
+- ✅ **RTL:** bidi control characters (RLM, overrides, isolates) are stripped before matching, so they can't split a word; placeholder text uses `dir="auto"`
+- ✅ **Accounts you follow:** read from X's data (`relationship_perspectives.following`, older `legacy.following`). They never count as suspicious; "Never filter accounts I follow" (off by default) skips them entirely
+- ✅ **Store kit:** [STORE.md](STORE.md) (decisions, hosting, packaging, listing text, permission justifications, AMO notes) and [PRIVACY.md](PRIVACY.md). The Firefox sources zip leaves out the model and local-only files (real screenshots, labelled posts, results)
+- Not done: Edge/Opera builds (not tested), Firefox for Android (M1), memory measurement in Firefox
 
 ### Planned improvements
 
@@ -269,7 +293,9 @@ x-abuse-shield/
 | X changes its markup | Selectors in one file, health check, fixture tests |
 | Model memory: +507 MB while loaded, 0.84 GB peak (in-place `.ort`; +850 MB / 1.2–1.9 GB for the `.onnx`) | Opt-in; word lists work meanwhile; load only with x.com open, unload when idle; lexicon-only mode |
 | The in-place patch to onnxruntime-web (pinned dev build) | Build fails if the patched code changes; unit test on the pinned source; re-measure (`spike-browser --variant=bundled-ort`) before upgrading |
-| Shipping the model makes the extension ~331 MB | Fine for personal use; for the Chrome Web Store, host the `.ort` and download it instead (the download path already exists) |
+| Shipping the model makes the extension ~331 MB | Fine for personal use; for the stores, the hosted build (~28 MB) downloads the same `.ort` (required for AMO, 200 MB limit) |
+| Firefox-only differences: temporary add-ons vanish on restart; release Firefox installs only signed add-ons | Unlisted AMO signing with the hosted model (STORE.md) |
+| Quote and repost markup (`div[role="link"]` cards, `socialContext`) is inferred, like "Mute on X" | Selectors in one file; quotes need X's data for the quoted id, so a markup change leaves quotes unfiltered rather than wrong |
 | Weak Hindi/Hinglish (confirmed in Phase 0) | Word list as primary detector, corroboration rule, custom words |
 | False positives | Blur default, review log, feedback, allowlist |
 | X changes its API response shape | Field paths in one file, field health check, API-response fixtures, DOM-only fallback |
@@ -282,7 +308,7 @@ x-abuse-shield/
 
 | Stage | Target | Work | Main risk |
 |---|---|---|---|
-| M1 | Firefox for Android | WXT Firefox target; inference in background page (no offscreen API); responsive options; AMO | Phone memory for a 300 MB model → lexicon-only fallback |
+| M1 | Firefox for Android | The desktop Firefox build (Phase 4: MV2, model in a background worker) on Android: test, responsive popup/options, AMO with the hosted model | Phone memory for a 300 MB model → lexicon-only fallback |
 | M2 | Safari iOS | WXT Safari target + `safari-web-extension-converter`; needs Mac + Apple developer account | iOS extension memory caps → lexicon-only, or native inference in the container app |
 | M3 (optional) | Android WebView app | Kotlin shell injecting `core/`; ONNX Runtime Mobile; sideloaded | Google sign-in blocked in WebViews; not Play-publishable |
 | Sync | All devices | Import/export first; later "Mute on X" (real mutes sync via X) | — |
