@@ -1,0 +1,39 @@
+{
+  "_comment": "SYNTHETIC REST v2 notifications response: v1.1-style users and tweets keyed by id under globalObjects.",
+  "globalObjects": {
+    "users": {
+      "7001": {
+        "id_str": "7001",
+        "screen_name": "kattar_x",
+        "name": "K",
+        "created_at": "Tue Oct 20 08:00:00 +0000 2026",
+        "followers_count": 3,
+        "friends_count": 900,
+        "default_profile_image": false,
+        "profile_image_url_https": "https://pbs.twimg.com/profile_images/9/k_normal.jpg",
+        "description": "DM for paid promotion"
+      }
+    },
+    "tweets": {
+      "4001": {
+        "id_str": "4001",
+        "full_text": "@downlz तुझे घर आकर मारूंगा, देख लेना।",
+        "user_id_str": "7001",
+        "lang": "hi",
+        "created_at": "Fri Oct 23 14:30:00 +0000 2026",
+        "in_reply_to_status_id_str": "3999",
+        "in_reply_to_screen_name": "downlz"
+      },
+      "4003": {
+        "id_str": "4003",
+        "full_text": "@downlz Abe gadhe, chup baith",
+        "user_id_str": "7001",
+        "lang": "hi",
+        "created_at": "Fri Oct 23 14:40:00 +0000 2026",
+        "in_reply_to_status_id_str": "3999",
+        "in_reply_to_screen_name": "downlz"
+      }
+    }
+  },
+  "timeline": { "id": "AAAA", "instructions": [] }
+}

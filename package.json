@@ -1,0 +1,35 @@
+{
+  "name": "x-abuse-shield",
+  "version": "0.0.1",
+  "private": true,
+  "description": "On-device multilingual abuse filter for x.com",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "node scripts/copy-ort.mjs && wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "wxt build && tsx scripts/e2e-smoke.ts",
+    "spike:reference": "tsx scripts/spike-reference.ts",
+    "spike:browser": "wxt build && tsx scripts/spike-browser.ts",
+    "spike:report": "tsx scripts/spike-report.ts"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@wxt-dev/module-react": "1.2.2",
+    "happy-dom": "21.0.4",
+    "puppeteer": "25.16.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5",
+    "wxt": "0.21.4"
+  }
+}

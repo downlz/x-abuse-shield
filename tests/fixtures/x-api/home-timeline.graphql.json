@@ -1,0 +1,123 @@
+{
+  "_comment": "SYNTHETIC HomeTimeline response in X's current GraphQL shape (Oct 2026): user handle/name/date under core, avatar under avatar.image_url, counts under legacy.",
+  "data": {
+    "home": {
+      "home_timeline_urt": {
+        "instructions": [
+          {
+            "type": "TimelineAddEntries",
+            "entries": [
+              {
+                "entryId": "tweet-2001",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "__typename": "Tweet",
+                        "rest_id": "2001",
+                        "core": {
+                          "user_results": {
+                            "result": {
+                              "__typename": "User",
+                              "rest_id": "8001",
+                              "is_blue_verified": false,
+                              "core": { "screen_name": "priya_runs", "name": "Priya", "created_at": "Mon Mar 02 09:00:00 +0000 2015" },
+                              "avatar": { "image_url": "https://pbs.twimg.com/profile_images/111/priya_normal.jpg" },
+                              "legacy": { "followers_count": 3400, "friends_count": 512, "description": "Runner. Coffee.", "default_profile_image": false }
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "2001",
+                          "full_text": "Just finished my morning run, feeling great! 🏃",
+                          "lang": "en",
+                          "created_at": "Fri Oct 23 14:00:00 +0000 2026",
+                          "user_id_str": "8001"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "entryId": "tweet-2002",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "__typename": "Tweet",
+                        "rest_id": "2002",
+                        "core": {
+                          "user_results": {
+                            "result": {
+                              "__typename": "User",
+                              "rest_id": "9001",
+                              "is_blue_verified": false,
+                              "core": { "screen_name": "Srihars47664037", "name": "Sriharsha", "created_at": "Wed Oct 14 10:00:00 +0000 2026" },
+                              "avatar": { "image_url": "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png" },
+                              "legacy": { "followers_count": 12, "friends_count": 480, "description": "Follow back guaranteed", "default_profile_image": true }
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "2002",
+                          "full_text": "@AjitYadav260 @grok Chutiya fellow posting useless",
+                          "lang": "hi",
+                          "created_at": "Fri Oct 23 14:58:00 +0000 2026",
+                          "user_id_str": "9001",
+                          "in_reply_to_status_id_str": "1999",
+                          "in_reply_to_screen_name": "AjitYadav260"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "entryId": "tweet-2005",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "__typename": "TweetWithVisibilityResults",
+                        "tweet": {
+                          "rest_id": "2005",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "__typename": "User",
+                                "rest_id": "8002",
+                                "is_blue_verified": true,
+                                "core": { "screen_name": "longform_writer", "name": "Long Form", "created_at": "Sat Jan 01 00:00:00 +0000 2011" },
+                                "avatar": { "image_url": "https://pbs.twimg.com/profile_images/5/lf_normal.jpg" },
+                                "legacy": { "followers_count": 25000, "friends_count": 300, "description": "Essays." }
+                              }
+                            }
+                          },
+                          "note_tweet": { "note_tweet_results": { "result": { "text": "A long post that the page cuts off behind Show more. The full text only arrives in the API response, and it ends with an insult: you absolute moron." } } },
+                          "legacy": {
+                            "id_str": "2005",
+                            "full_text": "A long post that the page cuts off behind Show more. The full text only arrives…",
+                            "lang": "en",
+                            "created_at": "Fri Oct 23 12:00:00 +0000 2026",
+                            "user_id_str": "8002"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

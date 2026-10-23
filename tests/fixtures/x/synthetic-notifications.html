@@ -1,0 +1,62 @@
+<!doctype html>
+<!--
+  SYNTHETIC fixture of /notifications/mentions. Mentions and replies render as
+  ordinary post articles; likes/follows are article[data-testid="notification"].
+  4003 uses only a mild word; it is hidden only when X's data (3-day-old
+  account, 3 followers) reaches the extension.
+-->
+<html lang="en">
+<body>
+<header><nav><a href="/downlz" data-testid="AppTabBar_Profile_Link" role="link">Profile</a></nav></header>
+<main>
+<div data-testid="primaryColumn">
+  <section role="region"><div aria-label="Timeline: Notifications"><div style="position: relative;">
+
+    <div data-testid="cellInnerDiv"><div><div>
+      <article role="article" tabindex="0" data-testid="notification"><div><span>Priya liked your post</span></div></article>
+    </div></div></div>
+
+    <div data-testid="cellInnerDiv"><div><div>
+      <article aria-labelledby="id__n1" role="article" tabindex="0" data-testid="tweet"><div><div>
+        <div data-testid="Tweet-User-Avatar"><div><a href="/kattar_x" role="link"><img alt="" src="https://pbs.twimg.com/profile_images/9/k_normal.jpg"></a></div></div>
+        <div data-testid="User-Name">
+          <div><a href="/kattar_x" role="link"><span>K</span></a></div>
+          <div><a href="/kattar_x" role="link" tabindex="-1"><span>@kattar_x</span></a><a href="/kattar_x/status/4001" role="link"><time datetime="2026-10-23T14:30:00.000Z">30m</time></a></div>
+        </div>
+        <div><span>Replying to </span><a href="/downlz" role="link">@downlz</a></div>
+        <div data-testid="tweetText" lang="hi" dir="auto"><span>तुझे घर आकर मारूंगा, देख लेना।</span></div>
+        <div role="group"></div>
+      </div></div></article>
+    </div></div></div>
+
+    <div data-testid="cellInnerDiv"><div><div>
+      <article aria-labelledby="id__n2" role="article" tabindex="0" data-testid="tweet"><div><div>
+        <div data-testid="Tweet-User-Avatar"><div><a href="/old_friend" role="link"><img alt="" src="https://pbs.twimg.com/profile_images/8/f_normal.jpg"></a></div></div>
+        <div data-testid="User-Name">
+          <div><a href="/old_friend" role="link"><span>Friend</span></a></div>
+          <div><a href="/old_friend" role="link" tabindex="-1"><span>@old_friend</span></a><a href="/old_friend/status/4002" role="link"><time datetime="2026-10-23T14:35:00.000Z">25m</time></a></div>
+        </div>
+        <div><span>Replying to </span><a href="/downlz" role="link">@downlz</a></div>
+        <div data-testid="tweetText" lang="qme" dir="auto"><span>pagal hai tu </span><img alt="😂" src="https://abs-0.twimg.com/emoji/v2/svg/1f602.svg"><img alt="😂" src="https://abs-0.twimg.com/emoji/v2/svg/1f602.svg"></div>
+        <div role="group"></div>
+      </div></div></article>
+    </div></div></div>
+
+    <div data-testid="cellInnerDiv"><div><div>
+      <article aria-labelledby="id__n3" role="article" tabindex="0" data-testid="tweet"><div><div>
+        <div data-testid="Tweet-User-Avatar"><div><a href="/kattar_x" role="link"><img alt="" src="https://pbs.twimg.com/profile_images/9/k_normal.jpg"></a></div></div>
+        <div data-testid="User-Name">
+          <div><a href="/kattar_x" role="link"><span>K</span></a></div>
+          <div><a href="/kattar_x" role="link" tabindex="-1"><span>@kattar_x</span></a><a href="/kattar_x/status/4003" role="link"><time datetime="2026-10-23T14:40:00.000Z">20m</time></a></div>
+        </div>
+        <div><span>Replying to </span><a href="/downlz" role="link">@downlz</a></div>
+        <div data-testid="tweetText" lang="hi" dir="auto"><span>Abe gadhe, chup baith</span></div>
+        <div role="group"></div>
+      </div></div></article>
+    </div></div></div>
+
+  </div></div></section>
+</div>
+</main>
+</body>
+</html>

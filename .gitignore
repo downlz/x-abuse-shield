@@ -1,0 +1,12 @@
+node_modules/
+.output/
+.wxt/
+.cache/
+.spike-profile/
+.e2e-profile/
+public/ort/
+spike/results/
+*.log
+
+# Real X screenshots (contain third-party handles) — keep local only
+tests/fixtures/x/*.png

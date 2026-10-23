@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Model Spike</title>
+    <style>
+      :root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+      body { margin: 0 auto; max-width: 960px; padding: 24px 16px; }
+      button { font: inherit; padding: 6px 14px; }
+      pre { background: color-mix(in srgb, currentColor 6%, transparent); padding: 12px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Model spike</h1>
+    <p>Loads the toxicity model in the offscreen document twice (first load, then a fresh document) and benchmarks it.</p>
+    <button id="run">Run spike</button>
+    <h2>Log</h2>
+    <pre id="log"></pre>
+    <h2>Result</h2>
+    <pre id="result"></pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

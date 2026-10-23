@@ -1,0 +1,172 @@
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it } from 'vitest';
+import { collectRecords } from '@/adapters/x-api/collect';
+import { X } from '@/adapters/x-dom/selectors';
+import { DEFAULT_SETTINGS } from '@/core/config/defaults';
+import type { Settings } from '@/core/config/schema';
+import type { MuteState, Strike } from '@/core/mute/mutes';
+import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
+import type { TabHealth } from '@/shared/health';
+import { loadHtmlFixture, loadJsonFixture } from '../helpers';
+
+const NOW = Date.parse('2026-10-23T15:00:00Z');
+
+function setup(path: string, options: { settings?: Partial<Settings>; muteState?: MuteState } = {}) {
+  const strikes: Strike[] = [];
+  const health: TabHealth[] = [];
+  const pipeline = new ContentPipeline(
+    { doc: document, path: () => path, now: () => NOW, onFlagged: (s) => strikes.push(s), onHealth: (h) => health.push(h) },
+    { ...structuredClone(DEFAULT_SETTINGS), ...options.settings },
+    options.muteState ?? { mutes: [], strikes: [] },
+  );
+  return { pipeline, strikes, health };
+}
+
+/** postId → data-xas action, or null when untouched. */
+function treatments(): Record<string, string | null> {
+  return Object.fromEntries(
+    [...document.querySelectorAll(X.post)].map((article) => {
+      const id = /\/status\/(\d+)/.exec(article.querySelector('a[href*="/status/"] time')?.closest('a')?.getAttribute('href') ?? '')?.[1];
+      return [id ?? 'ad', article.getAttribute('data-xas')];
+    }),
+  );
+}
+
+const placeholderText = (postId: string) =>
+  document.querySelector(`article[data-xas-post="${postId}"] .xas-placeholder`)?.textContent ?? '';
+
+describe('home · For you', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-home-for-you.html'));
+
+  it('blurs word-list abuse before paint and reports a strike', () => {
+    const { pipeline, strikes } = setup('/home');
+    pipeline.attach();
+    expect(treatments()).toEqual({ '2001': null, '2002': 'blur', '2003': null, '2004': null, ad: null });
+    expect(placeholderText('2002')).toContain('insult');
+    expect(strikes.map((s) => [s.handle, s.postId])).toEqual([['srihars47664037', '2002']]);
+  });
+
+  it('never filters the logged-in user’s own posts', () => {
+    setup('/home').pipeline.attach();
+    expect(treatments()['2004']).toBeNull();
+  });
+
+  it('does nothing outside the enabled scopes', () => {
+    setup('/explore').pipeline.attach();
+    expect(Object.values(treatments()).every((t) => t === null)).toBe(true);
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/home', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, forYou: false } } }).pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('filters the Following tab under its own switch', () => {
+    document.querySelectorAll('[role="tab"]').forEach((tab, i) => tab.setAttribute('aria-selected', String(i === 1)));
+    setup('/home').pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    document.querySelectorAll('[role="tab"]').forEach((tab, i) => tab.setAttribute('aria-selected', String(i === 1)));
+    setup('/home', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, following: false } } }).pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('hides muted authors everywhere with their own label', () => {
+    const muteState: MuteState = {
+      mutes: [{ handle: 'priya_runs', mutedAt: NOW - 1000, expiresAt: null, reason: 'manual', evidence: [] }],
+      strikes: [],
+    };
+    setup('/home', { muteState }).pipeline.attach();
+    expect(treatments()['2001']).toBe('collapse');
+    expect(placeholderText('2001')).toContain('Muted @priya_runs');
+  });
+
+  it('processes posts X adds later, and reveals on request', async () => {
+    const { pipeline } = setup('/home');
+    pipeline.attach();
+    const timeline = document.querySelector('[aria-label="Timeline: Your Home Timeline"] > div')!;
+    const cell = document.querySelector(X.timelineCell)!.cloneNode(true) as Element;
+    cell.querySelectorAll('a[href]').forEach((a) => a.setAttribute('href', a.getAttribute('href')!.replace('2001', '2099')));
+    cell.querySelector(X.postText)!.textContent = 'Madarchod, apni shakal dekh pehle.';
+    timeline.append(cell);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(treatments()['2099']).toBe('blur');
+
+    pipeline.reveal('2099');
+    expect(document.querySelector('article[data-xas-post="2099"]')?.hasAttribute('data-xas-revealed')).toBe(true);
+  });
+
+  it('re-applies when settings change', () => {
+    const { pipeline } = setup('/home');
+    pipeline.attach();
+    pipeline.updateSettings({ ...structuredClone(DEFAULT_SETTINGS), actions: { ...DEFAULT_SETTINGS.actions, mild: 'remove' } });
+    expect(treatments()['2002']).toBe('remove');
+    expect(document.querySelector('[data-xas-cell="remove"]')).not.toBeNull();
+  });
+});
+
+describe('thread replies', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-thread.html'));
+  const path = '/LakotaMan1/status/3000';
+
+  it('leaves the opened post alone by default', () => {
+    setup(path).pipeline.attach();
+    expect(treatments()['3000']).toBeNull();
+  });
+
+  it('hides a 3-account copy-paste brigade and strikes each author', () => {
+    const { pipeline, strikes } = setup(path);
+    pipeline.attach();
+    expect(treatments()).toMatchObject({ '3004': 'blur', '3005': 'blur', '3006': 'blur' });
+    expect(placeholderText('3005')).toContain('pagal');
+    expect(new Set(strikes.map((s) => s.handle))).toEqual(new Set(['brigade_one', 'brigade_two', 'brigade_three']));
+  });
+
+  it('ignores the brigade when copy-paste detection is off', () => {
+    setup(path, { settings: { coordination: { ...DEFAULT_SETTINGS.coordination, enabled: false } } }).pipeline.attach();
+    expect(treatments()).toMatchObject({ '3004': null, '3005': null, '3006': null });
+  });
+
+  it('is stricter with a new account’s mild insult only once X’s account data is known', () => {
+    const { pipeline } = setup(path);
+    pipeline.attach();
+    // Page-only signals (generated handle + default avatar) cap at medium: mild words need model corroboration.
+    expect(treatments()['3007']).toBeNull();
+
+    // X's data says 9 days old, 12 followers → high → the mild insult now counts. Late records trigger a re-check.
+    pipeline.addRecords({ ...collectRecords(loadJsonFixture('tweet-detail.legacy-shape.json')), operation: 'TweetDetail' });
+    expect(treatments()['3007']).toBe('blur');
+    expect(placeholderText('3007')).toContain('suspicious');
+  });
+});
+
+describe('notifications', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-notifications.html'));
+
+  it('collapses threats and lets friendly teasing through', () => {
+    const { pipeline } = setup('/notifications/mentions');
+    pipeline.attach();
+    expect(treatments()).toEqual({ '4001': 'collapse', '4002': null, '4003': null });
+    expect(placeholderText('4001')).toContain('threat');
+  });
+
+  it('hides a mild insult from a 3-day-old account once X’s data arrives', () => {
+    const { pipeline } = setup('/notifications/mentions');
+    pipeline.addRecords({ ...collectRecords(loadJsonFixture('notifications.rest.json')), operation: 'mentions' });
+    pipeline.attach();
+    expect(treatments()).toEqual({ '4001': 'collapse', '4002': null, '4003': 'blur' });
+  });
+});
+
+describe('health', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-home-for-you.html'));
+
+  it('reports reading posts and account-data coverage', () => {
+    const { pipeline, health } = setup('/home');
+    pipeline.addRecords({ ...collectRecords(loadJsonFixture('home-timeline.graphql.json')), operation: 'HomeTimeline' });
+    pipeline.attach();
+    expect(health.at(-1)).toMatchObject({ dom: 'ok', api: 'ok', postsSeen: 4 });
+    // 2001 and 2002 have records; the quote poster and own post don't (own posts aren't scored).
+    expect(health.at(-1)!.coverage).toBeCloseTo(2 / 3);
+  });
+});

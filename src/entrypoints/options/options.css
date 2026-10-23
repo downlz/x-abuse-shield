@@ -1,0 +1,5 @@
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+section.card { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.field > span:first-child { min-width: 180px; }
+.hint { font-size: 13px; color: var(--muted); }
