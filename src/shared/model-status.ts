@@ -16,3 +16,9 @@ export const MODEL_LAST_USED_KEY = 'modelLastUsed';
 
 /** Approximate one-time download, shown before asking for approval. */
 export const MODEL_DOWNLOAD_MB = 289;
+
+/**
+ * Memory while loaded, measured in Chrome (extension process, 60 s idle):
+ * +507 MB for the shipped in-place .ort model, +850 MB for the downloaded .onnx.
+ */
+export const MODEL_MEMORY_MB = __BUNDLED_MODEL__ ? 500 : 850;

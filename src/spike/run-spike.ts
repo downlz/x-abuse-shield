@@ -1,6 +1,7 @@
 import { env } from '@huggingface/transformers';
 import { CATEGORIES, type CategoryScores } from '@/core/engine/categories';
-import { MODEL_ID } from '@/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, MODEL_ID } from '@/adapters/inference/model';
+import { loadBundledClassifier } from '@/adapters/inference/ort-classifier';
 import { loadToxicityClassifier, type ToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
 import { chunk, latencyStats } from './stats';
 import type { SpikeProgress, SpikeRunResult, SpikeSample } from './types';
@@ -29,20 +30,23 @@ export async function runSpike(
   const cachedFilesBefore = await countCachedModelFiles();
   report({ stage: 'load', message: `Loading model (${cachedFilesBefore} files cached)…` });
   const loadStart = performance.now();
-  const classifier = await loadToxicityClassifier({
-    ortBaseUrl,
-    sessionOptions: SPIKE_VARIANTS[variant],
-    onProgress: (p) => {
-      if (p.status === 'progress') {
-        fileSizes.set(p.file, p.total);
-        const now = performance.now();
-        if (now - lastReported > 2000) {
-          lastReported = now;
-          report({ stage: 'load', message: `${p.file}: ${Math.round(p.progress)}%` });
-        }
-      }
-    },
-  });
+  const classifier =
+    variant === 'bundled-ort'
+      ? await loadBundledClassifier({ modelBaseUrl: new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href, ortBaseUrl })
+      : await loadToxicityClassifier({
+          ortBaseUrl,
+          sessionOptions: SPIKE_VARIANTS[variant],
+          onProgress: (p) => {
+            if (p.status === 'progress') {
+              fileSizes.set(p.file, p.total);
+              const now = performance.now();
+              if (now - lastReported > 2000) {
+                lastReported = now;
+                report({ stage: 'load', message: `${p.file}: ${Math.round(p.progress)}%` });
+              }
+            }
+          },
+        });
   loaded = classifier;
   const loadMs = performance.now() - loadStart;
   report({ stage: 'load', message: `Loaded in ${Math.round(loadMs)} ms` });

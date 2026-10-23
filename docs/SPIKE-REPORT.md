@@ -9,7 +9,7 @@ Transformers.js 4.3.1 · onnxruntime-web 1.31.0-dev.20260914-8d85527a0 · cross-
 |---|---|---|
 | Batched latency ≤ 150 ms/post | 32 ms | ✅ |
 | Loads from cache after a browser restart | 4 files cached, loaded in 2.8 s | ✅ |
-| Memory acceptable | +850 MB–868 MB steady while loaded (8 runs); back to 47 MB–61 MB within 60 s of unloading | ⚠️ heavy — unload when idle |
+| Memory acceptable | +849 MB–858 MB steady while loaded (8 runs); back to 47 MB–55 MB within 60 s of unloading | ⚠️ heavy — unload when idle |
 | Browser output matches Node reference | max diff 0.0000 | ✅ |
 
 ## Loading
@@ -37,27 +37,30 @@ extension pages; other Chrome processes do not change. Each session loads the mo
 "Peak" is read 5 s after the benchmark, "steady" after 60 s idle — V8 frees the large load-time
 buffers lazily, so the 5 s reading varies by more than 1 GB between runs.
 
-- **Steady-state cost of the loaded model: +850 MB–868 MB**
-- Peak readings 5 s after loading: 1,184 MB–1,920 MB
-- After unloading (offscreen document closed, 60 s): 47 MB–61 MB
+- **Steady-state cost of the loaded model: +849 MB–858 MB** (downloaded `.onnx`)
+- **Shipped in-place `.ort` model: +505 MB–507 MB**
+- Peak readings 5 s after loading: 1,184 MB–1,208 MB
+- After unloading (offscreen document closed, 60 s): 47 MB–55 MB
 
 | Session | Session options | No model | Loaded, 5 s | Loaded, 60 s idle | Unloaded, 5 s | Unloaded, 60 s | Batched, per post |
 |---|---|---|---|---|---|---|---|
 | after-restart | `{}` | 45 MB | 1,196 MB | 903 MB | 910 MB | 55 MB | 30 ms |
-| default #1 | `{}` | 43 MB | 1,920 MB | 911 MB | 918 MB | 61 MB | 34 ms |
-| default #2 | `{}` | 46 MB | 1,189 MB | 896 MB | 903 MB | 49 MB | 31 ms |
+| default #1 | `{}` | 45 MB | 1,189 MB | 896 MB | 906 MB | 51 MB | 31 ms |
+| default #2 | `{}` | 45 MB | 1,186 MB | 894 MB | 904 MB | 49 MB | 31 ms |
 | no-arena #1 | `{enableCpuMemArena:false,enableMemPattern:false}` | 43 MB | 1,186 MB | 897 MB | 906 MB | 50 MB | 30 ms |
 | no-arena #2 | `{enableCpuMemArena:false,enableMemPattern:false}` | 40 MB | 1,184 MB | 896 MB | 904 MB | 47 MB | 29 ms |
 | no-graph-opt #1 | `{graphOptimizationLevel:disabled}` | 41 MB | 1,189 MB | 893 MB | 902 MB | 47 MB | 23 ms |
 | no-prepack #1 | `{extra:{session:{disable_prepacking:1}}}` | 41 MB | 1,193 MB | 892 MB | 902 MB | 49 MB | 24 ms |
 | no-prepack #2 | `{extra:{session:{disable_prepacking:1}}}` | 44 MB | 1,208 MB | 896 MB | 906 MB | 52 MB | 19 ms |
+| bundled-ort #1 | `{extra:{session:{use_ort_model_bytes_directly:1,use_ort_model_bytes_for_initializers:1,disable_prepacking:1}}}` | 47 MB | 840 MB | 553 MB | 561 MB | 51 MB | 32 ms |
+| bundled-ort #2 | `{extra:{session:{use_ort_model_bytes_directly:1,use_ort_model_bytes_for_initializers:1,disable_prepacking:1}}}` | 41 MB | 835 MB | 548 MB | 559 MB | 48 MB | 30 ms |
 
 ### What the memory is (Phase 2 investigation)
 
 - The tokenizer (256k-token vocabulary) takes ~180 MB: 149 MB of JS heap + 32 MB external, measured in Node (same V8).
 - No ONNX Runtime session option changes the total: CPU arena, graph optimisation and weight prepacking were all tried above.
-- Most likely remainder (not directly observed): the 268 MB model copied into WebAssembly memory plus the weights parsed from it. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.
-- Getting below the 700 MB target would need the model in ONNX Runtime’s own `.ort` format, loaded in place and hosted by us, or a smaller model. Until then the mitigation is loading only while x.com is open and unloading after idle minutes.
+- The rest was two copies of the weights: the model bytes in WebAssembly memory plus the weights parsed (and pre-packed) from them. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.
+- **Fix (`bundled-ort` above):** the model converted to ONNX Runtime’s `.ort` format and run in place (`use_ort_model_bytes_for_initializers`, `disable_prepacking`), with onnxruntime-web patched to keep the bytes (scripts/ort-in-place-plugin.ts). Steady cost +507 MB instead of +850 MB (−41%), peak 0.84 GB instead of 1.19 GB, same speed, scores within 1e-6 of the `.onnx`. It ships with the extension (`npm run model:build`).
 
 ## Output parity
 

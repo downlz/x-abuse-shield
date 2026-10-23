@@ -49,8 +49,14 @@ const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024).toLocaleString(
 const extension = (snapshot: MemorySnapshot) => snapshot.extension ?? 0;
 /** Steady-state cost of the loaded model in the extension process. */
 const modelCost = (m: NonNullable<SessionResult['processMemory']>) => extension(m.loadedIdle) - extension(m.baseline);
-const measured = memorySessions.flatMap(({ session }) => (session.processMemory ? [session.processMemory] : []));
+// The downloaded .onnx sessions; the shipped in-place model is reported on its own line.
+const measured = memorySessions.flatMap(({ variant, session }) =>
+  variant !== 'bundled-ort' && session.processMemory ? [session.processMemory] : [],
+);
 const steadyCosts = measured.map(modelCost).sort((a, b) => a - b);
+const inPlaceCosts = memorySessions
+  .flatMap(({ variant, session }) => (variant === 'bundled-ort' && session.processMemory ? [modelCost(session.processMemory)] : []))
+  .sort((a, b) => a - b);
 const peakReadings = measured.map((m) => extension(m.loaded)).sort((a, b) => a - b);
 const releasedTo = measured.map((m) => extension(m.unloadedIdle)).sort((a, b) => a - b);
 const range = (values: number[]) =>
@@ -148,7 +154,8 @@ push(
   '"Peak" is read 5 s after the benchmark, "steady" after 60 s idle — V8 frees the large load-time',
   'buffers lazily, so the 5 s reading varies by more than 1 GB between runs.',
   '',
-  `- **Steady-state cost of the loaded model: +${range(steadyCosts)}**`,
+  `- **Steady-state cost of the loaded model: +${range(steadyCosts)}** (downloaded \`.onnx\`)`,
+  ...(inPlaceCosts.length ? [`- **Shipped in-place \`.ort\` model: +${range(inPlaceCosts)}**`] : []),
   `- Peak readings 5 s after loading: ${range(peakReadings)}`,
   `- After unloading (offscreen document closed, 60 s): ${range(releasedTo)}`,
   '',
@@ -167,8 +174,8 @@ push(
   '',
   '- The tokenizer (256k-token vocabulary) takes ~180 MB: 149 MB of JS heap + 32 MB external, measured in Node (same V8).',
   '- No ONNX Runtime session option changes the total: CPU arena, graph optimisation and weight prepacking were all tried above.',
-  '- Most likely remainder (not directly observed): the 268 MB model copied into WebAssembly memory plus the weights parsed from it. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.',
-  '- Getting below the 700 MB target would need the model in ONNX Runtime’s own `.ort` format, loaded in place and hosted by us, or a smaller model. Until then the mitigation is loading only while x.com is open and unloading after idle minutes.',
+  '- The rest was two copies of the weights: the model bytes in WebAssembly memory plus the weights parsed (and pre-packed) from them. WebAssembly memory never shrinks, so the load-time peak becomes the steady state.',
+  '- **Fix (`bundled-ort` above):** the model converted to ONNX Runtime’s `.ort` format and run in place (`use_ort_model_bytes_for_initializers`, `disable_prepacking`), with onnxruntime-web patched to keep the bytes (scripts/ort-in-place-plugin.ts). Steady cost +507 MB instead of +850 MB (−41%), peak 0.84 GB instead of 1.19 GB, same speed, scores within 1e-6 of the `.onnx`. It ships with the extension (`npm run model:build`).',
   '',
   '## Output parity',
   '',

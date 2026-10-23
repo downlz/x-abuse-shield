@@ -5,6 +5,7 @@ node_modules/
 .spike-profile/
 .e2e-profile/
 public/ort/
+public/models/
 spike/results/
 *.log
 

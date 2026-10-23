@@ -31,18 +31,23 @@ export interface ToxicityClassifier {
   dispose(): Promise<void>;
 }
 
+/** Points ONNX Runtime at the WebAssembly files shipped in the extension. */
+export function configureWebRuntime(ortBaseUrl: string, numThreads?: number): void {
+  const wasm = env.backends.onnx.wasm!;
+  wasm.wasmPaths = {
+    mjs: ortBaseUrl + ORT_FILES.mjs,
+    wasm: ortBaseUrl + ORT_FILES.wasm,
+  };
+  // The cached-WASM path re-imports the loader from a blob: URL, which the
+  // extension CSP (script-src 'self') rejects. The files are local anyway.
+  env.useWasmCache = false;
+  if (numThreads) wasm.numThreads = numThreads;
+}
+
 export async function loadToxicityClassifier(options: ClassifierOptions = {}): Promise<ToxicityClassifier> {
   if (options.ortBaseUrl) {
-    const wasm = env.backends.onnx.wasm!;
-    wasm.wasmPaths = {
-      mjs: options.ortBaseUrl + ORT_FILES.mjs,
-      wasm: options.ortBaseUrl + ORT_FILES.wasm,
-    };
-    // The cached-WASM path re-imports the loader from a blob: URL, which the
-    // extension CSP (script-src 'self') rejects. The files are local anyway.
-    env.useWasmCache = false;
+    configureWebRuntime(options.ortBaseUrl, options.numThreads);
     env.allowLocalModels = false;
-    if (options.numThreads) wasm.numThreads = options.numThreads;
   }
   if (options.cacheDir) env.cacheDir = options.cacheDir;
 
@@ -79,7 +84,7 @@ export async function loadToxicityClassifier(options: ClassifierOptions = {}): P
 }
 
 /** Maps output index → category, failing loudly if the model's labels drift. */
-function labelOrder(id2label: Record<string, string>): Category[] {
+export function labelOrder(id2label: Record<string, string>): Category[] {
   const order = Object.keys(id2label)
     .sort((a, b) => Number(a) - Number(b))
     .map((id) => id2label[id] as Category);

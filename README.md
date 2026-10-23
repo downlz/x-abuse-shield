@@ -70,9 +70,12 @@ What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import bloc
 ## Setup
 
 ```sh
-npm install        # also copies ONNX Runtime's wasm into public/ort and generates WXT types
-npm run build      # → .output/chrome-mv3
+npm install           # also copies ONNX Runtime's wasm into public/ort and generates WXT types
+npm run model:build   # downloads the model once, converts it to run in place → public/models (~300 MB)
+npm run build         # → .output/chrome-mv3
 ```
+
+`model:build` is optional but recommended: the converted model ships inside the extension and needs far less memory (see below). Without it, the extension downloads the original model on first use instead.
 
 Load it in Chrome or Brave: `chrome://extensions` (or `brave://extensions`) → enable **Developer mode** → **Load unpacked** → pick `.output/chrome-mv3`. Reload any open x.com tabs afterwards — extensions only run on pages opened after they load.
 
@@ -80,7 +83,7 @@ The toolbar popup shows the sensitivity preset, today's counts, the AI model's s
 
 Each hidden post has **Show**, **Not abusive**, **Mute here** and **Mute on X** buttons. **Hidden posts** in the popup opens the review page: why each post was hidden, your labels, mutes and allowlist, and **Export labelled posts** for calibration.
 
-The word lists work straight away. To add the AI model, click **Download (289 MB)** in the popup. It loads while x.com is open (about 850 MB of memory) and unloads after 5 idle minutes; scoring takes about 30 ms per post.
+The word lists work straight away. To add the AI model, click **Turn on** in the popup (or **Download (289 MB)** if you skipped `model:build`). It loads while x.com is open — about 500 MB of memory with the shipped model, 850 MB with the downloaded one — and unloads after 5 idle minutes; scoring takes about 30 ms per post.
 
 ## Tests
 
