@@ -36,6 +36,23 @@ describe('CopyTracker', () => {
     expect(tracker.clusterOf('3')).toEqual([]);
   });
 
+  it('groups near-identical rewrites of the same reply', () => {
+    const tracker = new CopyTracker(options);
+    const key = (text: string) => fingerprint(text)!;
+    tracker.add(key('Shame on you Rahul, you sold the nation for money'), { postId: '1', author: 'a', postedAt: T0 });
+    tracker.add(key('Shame on u Rahul you sold the nation for money'), { postId: '2', author: 'b', postedAt: T0 + MIN });
+    const cluster = tracker.add(key('Shame on you Rahul, you sold this nation for money!!'), { postId: '3', author: 'c', postedAt: T0 + 2 * MIN });
+    expect(cluster.sort()).toEqual(['1', '2', '3']);
+  });
+
+  it('keeps unrelated replies on the same topic apart', () => {
+    const tracker = new CopyTracker(options);
+    const key = (text: string) => fingerprint(text)!;
+    tracker.add(key('Shame on you Rahul, you sold the nation for money'), { postId: '1', author: 'a', postedAt: T0 });
+    tracker.add(key('Rahul spoke about the nation and money in parliament today'), { postId: '2', author: 'b', postedAt: T0 });
+    expect(tracker.add(key('The nation needs money for schools, not statues'), { postId: '3', author: 'c', postedAt: T0 })).toEqual([]);
+  });
+
   it('uses posting time, not arrival order', () => {
     const tracker = new CopyTracker(options);
     tracker.add('k', { postId: '1', author: 'a', postedAt: T0 });

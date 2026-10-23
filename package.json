@@ -14,7 +14,8 @@
     "test:e2e": "wxt build && tsx scripts/e2e-smoke.ts",
     "spike:reference": "tsx scripts/spike-reference.ts",
     "spike:browser": "wxt build && tsx scripts/spike-browser.ts",
-    "spike:report": "tsx scripts/spike-report.ts"
+    "spike:report": "tsx scripts/spike-report.ts",
+    "calibrate": "tsx scripts/calibrate.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",

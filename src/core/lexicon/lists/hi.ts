@@ -22,7 +22,11 @@ export const HI: LexiconEntry[] = [
     'तेरी मां का',
     'तेरी बहन की',
     'मां चोद',
+    'तेरी गांड',
+    'गांड में',
+    'गांड मार',
   ]),
+  ...entries('obscene', 'mild', ['गांड']),
   ...entries('insult', 'strong', [
     'चूतिया',
     'चुतिया',

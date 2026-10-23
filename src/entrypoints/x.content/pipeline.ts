@@ -2,7 +2,7 @@ import { activeThresholds } from '@/core/config/migrate';
 import type { Settings } from '@/core/config/schema';
 import { CopyTracker } from '@/core/coordination/copy-tracker';
 import { fingerprint } from '@/core/coordination/fingerprint';
-import type { Category } from '@/core/engine/categories';
+import type { Category, CategoryScores } from '@/core/engine/categories';
 import { decide, type ScoringConfig, type Verdict } from '@/core/engine/decide';
 import { Lexicon } from '@/core/lexicon/match';
 import { activeMute, type MuteState, type Strike } from '@/core/mute/mutes';
@@ -21,7 +21,15 @@ export interface PipelineDeps {
   now: () => number;
   onFlagged: (strike: Strike) => void;
   onHealth: (health: TabHealth) => void;
+  /**
+   * Scores texts with the AI model. Resolves to null when the model is off or
+   * not approved; rejects on a transient failure.
+   */
+  classify?: (texts: string[]) => Promise<CategoryScores[] | null>;
 }
+
+/** Collects posts for ~one frame before asking the model, so a timeline page goes in one request. */
+const MODEL_FLUSH_MS = 30;
 
 interface Evaluation {
   /** Lowercase author handle. */
@@ -35,7 +43,9 @@ interface Evaluation {
   /** Counts as a strike against the author (not for clean copy-paste clusters). */
   strike: boolean;
   clusterSize: number;
-  /** Another copy in the cluster changed; recompute on next sight. */
+  /** Waiting for model scores. */
+  awaitingModel: boolean;
+  /** Another copy in the cluster changed, or scores arrived; recompute on next sight. */
   stale?: boolean;
 }
 
@@ -72,6 +82,15 @@ export class ContentPipeline {
   private observer: MutationObserver | null = null;
   private stats = { articles: 0, extracted: 0, evaluated: 0, withRecord: 0, users: 0, incompleteUsers: 0 };
   private lastHealth = '';
+  /** Model scores by post text (the same text can appear under several post ids). */
+  private readonly modelScores = new Map<string, CategoryScores>();
+  private readonly postsByText = new Map<string, Set<string>>();
+  private readonly modelPending = new Set<string>();
+  private readonly modelFailed = new Set<string>();
+  private modelQueue: string[] = [];
+  private modelFlush: ReturnType<typeof setTimeout> | null = null;
+  /** The model is off or not approved; stop asking until settings change. */
+  private modelOff = false;
 
   constructor(
     private readonly deps: PipelineDeps,
@@ -111,6 +130,8 @@ export class ContentPipeline {
   updateSettings(settings: Settings): void {
     this.applySettings(settings);
     this.evaluations.clear();
+    this.modelOff = false;
+    this.modelFailed.clear();
     this.processAll();
   }
 
@@ -176,7 +197,7 @@ export class ContentPipeline {
     }
 
     const evaluation = this.evaluate(post, context, focalId);
-    render(article, post.id, evaluation.verdict.flagged ? this.treatment(evaluation.verdict) : null, revealed);
+    render(article, post.id, this.treatmentFor(evaluation), revealed);
 
     if (evaluation.strike && !this.reported.has(post.id)) {
       this.reported.add(post.id);
@@ -208,10 +229,12 @@ export class ContentPipeline {
       if (key) cluster = this.tracker.add(key, { postId: post.id, author: handle, postedAt });
     }
     const copyOfFlagged = cluster.some((id) => id !== post.id && this.evaluations.get(id)?.ownFlag);
+    const model = this.modelScores.get(text);
 
     const verdict = decide(
       {
         lexiconHits: match.hits,
+        model,
         suppressed: match.suppressed,
         // Every author in a copy-paste cluster is treated as highly suspicious for that post.
         suspicion: cluster.length > 0 ? 'high' : assessment.level,
@@ -232,7 +255,19 @@ export class ContentPipeline {
     }
     if (verdict.flagged && directed && assessment.level !== 'low') verdict.reasons.push(...assessment.reasons);
 
-    const evaluation: Evaluation = { handle, hadRecord: !!record, text, verdict, ownFlag, strike, clusterSize: cluster.length };
+    // Posts the word lists already settled don't need the model.
+    const awaitingModel = !model && !ownFlag && this.requestModel(text, post.id);
+
+    const evaluation: Evaluation = {
+      handle,
+      hadRecord: !!record,
+      text,
+      verdict,
+      ownFlag,
+      strike,
+      clusterSize: cluster.length,
+      awaitingModel,
+    };
     this.evaluations.set(post.id, evaluation);
     if (!previous) {
       this.stats.evaluated++;
@@ -257,13 +292,57 @@ export class ContentPipeline {
     if (articles.length > 0) this.process(articles);
   }
 
-  private treatment(verdict: Verdict): Treatment {
+  private treatmentFor(evaluation: Evaluation): Treatment | null {
+    const { verdict } = evaluation;
+    if (!verdict.flagged) {
+      return evaluation.awaitingModel && this.settings.model.preBlur
+        ? { action: 'blur', label: 'Checking…', detail: 'Abuse Shield is scoring this post' }
+        : null;
+    }
     const what = verdict.categories.map((c) => CATEGORY_LABELS[c]).join(', ') || 'copy-paste reply';
     return {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
       label: 'Hidden by Abuse Shield',
       detail: verdict.reasons[0] ? `${what} · ${verdict.reasons[0]}` : what,
     };
+  }
+
+  /** Queues a text for the model. Returns whether scores are on their way. */
+  private requestModel(text: string, postId: string): boolean {
+    const { model } = this.settings;
+    if (!this.deps.classify || !model.enabled || !model.downloadApproved || this.modelOff) return false;
+    if (text.trim().length < 2 || this.modelFailed.has(text)) return false;
+    let posts = this.postsByText.get(text);
+    if (!posts) this.postsByText.set(text, (posts = new Set()));
+    posts.add(postId);
+    if (!this.modelPending.has(text)) {
+      this.modelPending.add(text);
+      this.modelQueue.push(text);
+      this.modelFlush ??= setTimeout(() => this.flushModel(), MODEL_FLUSH_MS);
+    }
+    return true;
+  }
+
+  private flushModel(): void {
+    this.modelFlush = null;
+    const texts = this.modelQueue.splice(0);
+    if (texts.length === 0 || !this.deps.classify) return;
+    const done = () => {
+      texts.forEach((text) => this.modelPending.delete(text));
+      this.reevaluate(texts.flatMap((text) => [...(this.postsByText.get(text) ?? [])]));
+    };
+    this.deps.classify(texts).then(
+      (scores) => {
+        if (scores) texts.forEach((text, i) => this.modelScores.set(text, scores[i]!));
+        else this.modelOff = true;
+        done();
+      },
+      () => {
+        // Don't retry these texts in a loop; they're re-requested after a settings change.
+        texts.forEach((text) => this.modelFailed.add(text));
+        done();
+      },
+    );
   }
 
   private domRecord(post: DomPost): AccountRecord {

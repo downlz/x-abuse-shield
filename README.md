@@ -4,9 +4,9 @@ On-device, multilingual abuse filter for x.com. Scores posts with
 [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
 via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
 
-> **Status:** Phase 1 is built and tested on synthetic x.com pages: word lists, account checks,
-> copy-paste detection, strikes and local mutes, popup and settings. The AI model tier (Phase 2) and
-> the review log (Phase 3) are still to come. See [docs/PLAN.md](docs/PLAN.md) for the plan and roadmap.
+> **Status:** Phases 1 and 2 are built: word lists, account checks, copy-paste detection (including
+> near-duplicates), strikes and local mutes, and the on-device AI model with download approval, idle
+> unloading and per-category thresholds. The review log (Phase 3) is next. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Goal
 
@@ -76,16 +76,27 @@ npm run build      # → .output/chrome-mv3
 
 Load it in Chrome or Brave: `chrome://extensions` (or `brave://extensions`) → enable **Developer mode** → **Load unpacked** → pick `.output/chrome-mv3`. Reload any open x.com tabs afterwards — extensions only run on pages opened after they load.
 
-The toolbar popup shows the sensitivity preset, today's counts and whether the extension can read the current tab. **Settings** covers everything else.
+The toolbar popup shows the sensitivity preset, today's counts, the AI model's status and whether the extension can read the current tab. **Settings** covers everything else.
+
+The word lists work straight away. To add the AI model, click **Download (289 MB)** in the popup. It loads while x.com is open (about 850 MB of memory) and unloads after 5 idle minutes; scoring takes about 30 ms per post.
 
 ## Tests
 
 ```sh
-npm test            # unit + fixture tests (Vitest, happy-dom)
-npm run test:e2e    # builds, then runs the extension in Chrome for Testing against fake x.com pages
+npm test                  # unit + fixture tests (Vitest, happy-dom)
+npm run test:e2e          # builds, then runs the extension in Chrome for Testing against fake x.com pages
+npx tsx scripts/e2e-smoke.ts --idle   # also checks the idle unload (adds ~2 minutes)
 ```
 
-The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup and API responses. The end-to-end run checks every verdict in `requestAnimationFrame`, i.e. before the browser paints, and saves screenshots to `spike/results/e2e/`.
+The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup and API responses. The end-to-end run checks word-list verdicts in `requestAnimationFrame`, i.e. before the browser paints, downloads the real model into a fresh profile (~1 minute) to check model verdicts and their latency, and saves screenshots to `spike/results/e2e/`.
+
+## Calibration
+
+```sh
+npm run calibrate   # scores labelled posts with word lists + model → docs/CALIBRATION.md
+```
+
+Add your own labelled posts to `calibration/posts.jsonl` (git-ignored); the format is in [calibration/README.md](calibration/README.md).
 
 ## Phase 0 spike
 

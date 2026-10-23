@@ -1,5 +1,16 @@
+import {
+  IDLE_ALARM,
+  modelAllowed,
+  preload,
+  restingStatus,
+  scoreTexts,
+  setModelStatus,
+  unload,
+  unloadIfIdle,
+} from '@/adapters/inference/model-host';
 import { closeOffscreenDocument, ensureOffscreenDocument } from '@/adapters/inference/offscreen-host';
 import {
+  KEYS,
   loadMuteState,
   loadSettings,
   loadStats,
@@ -8,9 +19,14 @@ import {
   saveSettings,
   saveStats,
 } from '@/adapters/storage/extension-storage';
+import { migrateSettings } from '@/core/config/migrate';
 import { recordStrike, unmute, type Strike } from '@/core/mute/mutes';
 import { healthKey, type TabHealth } from '@/shared/health';
-import { isMessage, type Reply } from '@/shared/messages';
+import { isMessage, type Reply, type ScoreReply } from '@/shared/messages';
+import { MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
+
+/** Below this, the ~850 MB model is off by default (word lists only). */
+const LOW_MEMORY_GB = 4;
 
 export default defineBackground(() => {
   // Single writer: strikes and stats from every tab are applied one at a time,
@@ -24,9 +40,33 @@ export default defineBackground(() => {
   // A post flagged in two tabs counts once in today's stats.
   const counted = new Set<string>();
 
-  browser.runtime.onInstalled.addListener(() => {
-    // Writes defaults on first install and fills new keys after an update.
-    void serial(async () => saveSettings(await loadSettings()));
+  browser.runtime.onInstalled.addListener(({ reason }) => {
+    void serial(async () => {
+      const settings = await loadSettings();
+      const memory = (navigator as { deviceMemory?: number }).deviceMemory;
+      if (reason === 'install' && memory !== undefined && memory <= LOW_MEMORY_GB) settings.model.enabled = false;
+      // Writes defaults on first install and fills new keys after an update.
+      await saveSettings(settings);
+      await setModelStatus(restingStatus(settings));
+    });
+  });
+  browser.runtime.onStartup.addListener(() => {
+    void loadSettings().then((settings) => setModelStatus(restingStatus(settings)));
+  });
+
+  void browser.alarms.create(IDLE_ALARM, { periodInMinutes: 1 });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === IDLE_ALARM) void loadSettings().then((settings) => unloadIfIdle(settings, Date.now()));
+  });
+
+  browser.storage.onChanged.addListener((changes, area) => {
+    const change = changes[KEYS.settings];
+    if (area !== 'local' || !change) return;
+    const before = migrateSettings(change.oldValue);
+    const after = migrateSettings(change.newValue);
+    if (modelAllowed(after) && !modelAllowed(before)) void preload().catch((error: unknown) => console.error(error));
+    if (!modelAllowed(after) && modelAllowed(before)) void unload(after);
+    if (!modelAllowed(after)) void setModelStatus(restingStatus(after));
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -52,6 +92,16 @@ export default defineBackground(() => {
         return;
       case 'unmute':
         return reply(serial(async () => saveMuteState(unmute(await loadMuteState(), message.handle))));
+      case 'model:score':
+        loadSettings()
+          .then((settings) => scoreTexts(message.texts, settings))
+          .then(sendResponse, (error: unknown) => sendResponse({ ok: false, error: String(error) } satisfies ScoreReply));
+        return true;
+      case 'model:status':
+        void onModelStatus(message.status);
+        return;
+      case 'model:retry':
+        return reply(preload());
     }
   });
 
@@ -59,6 +109,13 @@ export default defineBackground(() => {
     void browser.storage.session.remove(healthKey(tabId));
   });
 });
+
+async function onModelStatus(status: ModelStatus): Promise<void> {
+  // A late "loading" report must not overwrite "off" after the user switched the model off.
+  const settings = await loadSettings();
+  if (!modelAllowed(settings)) return;
+  await browser.storage.session.set({ [MODEL_STATUS_KEY]: status });
+}
 
 async function onFlagged(strike: Strike, counted: Set<string>): Promise<void> {
   const settings = await loadSettings();

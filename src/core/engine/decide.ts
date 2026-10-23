@@ -9,6 +9,7 @@ export interface ScoringConfig {
   suspicionOffsets: { medium: number; high: number };
   floor: number;
   corroboration: { low: number; medium: number };
+  mildWordsRepliesOnly: boolean;
 }
 
 export interface DecisionInput {
@@ -50,6 +51,7 @@ export function decide(input: DecisionInput, config: ScoringConfig): Verdict {
       reasons.push(`word list: “${hit.matched}”`);
       continue;
     }
+    if (config.mildWordsRepliesOnly && !input.directed) continue;
     if (level === 'high') {
       categories.add(hit.category);
       reasons.push(`word list: “${hit.matched}” from a highly suspicious account`);

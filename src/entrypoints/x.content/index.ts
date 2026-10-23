@@ -3,7 +3,7 @@ import { onRecords, type RecordsPayload } from '@/adapters/x-api/bridge';
 import { captureFixture, downloadFile } from '@/adapters/x-dom/capture-fixture';
 import { injectStyles, onShowClick } from '@/adapters/x-dom/render';
 import { migrateSettings } from '@/core/config/migrate';
-import type { Message } from '@/shared/messages';
+import type { Message, ScoreReply } from '@/shared/messages';
 import { ContentPipeline } from './pipeline';
 
 export default defineContentScript({
@@ -24,6 +24,14 @@ export default defineContentScript({
         now: Date.now,
         onFlagged: (strike) => send({ type: 'post:flagged', strike }),
         onHealth: (health) => send({ type: 'health', health }),
+        classify: async (texts) => {
+          const reply = (await browser.runtime.sendMessage({ type: 'model:score', texts } satisfies Message)) as
+            | ScoreReply
+            | undefined;
+          if (reply?.ok) return reply.scores;
+          if (reply?.error === 'off') return null;
+          throw new Error(reply?.error ?? 'No reply from the background');
+        },
       },
       settings,
       muteState,

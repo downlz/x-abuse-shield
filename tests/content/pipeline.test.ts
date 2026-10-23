@@ -4,6 +4,7 @@ import { collectRecords } from '@/adapters/x-api/collect';
 import { X } from '@/adapters/x-dom/selectors';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import type { Settings } from '@/core/config/schema';
+import type { CategoryScores } from '@/core/engine/categories';
 import type { MuteState, Strike } from '@/core/mute/mutes';
 import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
 import type { TabHealth } from '@/shared/health';
@@ -11,16 +12,58 @@ import { loadHtmlFixture, loadJsonFixture } from '../helpers';
 
 const NOW = Date.parse('2026-10-23T15:00:00Z');
 
-function setup(path: string, options: { settings?: Partial<Settings>; muteState?: MuteState } = {}) {
+function setup(
+  path: string,
+  options: {
+    settings?: Partial<Settings>;
+    muteState?: MuteState;
+    classify?: (texts: string[]) => Promise<CategoryScores[] | null>;
+  } = {},
+) {
   const strikes: Strike[] = [];
   const health: TabHealth[] = [];
   const pipeline = new ContentPipeline(
-    { doc: document, path: () => path, now: () => NOW, onFlagged: (s) => strikes.push(s), onHealth: (h) => health.push(h) },
+    {
+      doc: document,
+      path: () => path,
+      now: () => NOW,
+      onFlagged: (s) => strikes.push(s),
+      onHealth: (h) => health.push(h),
+      classify: options.classify,
+    },
     { ...structuredClone(DEFAULT_SETTINGS), ...options.settings },
     options.muteState ?? { mutes: [], strikes: [] },
   );
   return { pipeline, strikes, health };
 }
+
+const scores = (partial: Partial<CategoryScores> = {}): CategoryScores => ({
+  toxicity: 0.02,
+  severe_toxicity: 0,
+  obscene: 0,
+  threat: 0,
+  insult: 0.01,
+  identity_attack: 0,
+  sexual_explicit: 0,
+  ...partial,
+});
+
+/** A fake model whose answers are released by the test. */
+function deferredModel(score: (text: string) => CategoryScores | null) {
+  const requests: string[][] = [];
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const classify = async (texts: string[]) => {
+    requests.push(texts);
+    await gate;
+    const results = texts.map(score);
+    return results.some((r) => r === null) ? null : (results as CategoryScores[]);
+  };
+  return { classify, requests, release };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true } };
 
 /** postId → data-xas action, or null when untouched. */
 function treatments(): Record<string, string | null> {
@@ -155,6 +198,69 @@ describe('notifications', () => {
     pipeline.addRecords({ ...collectRecords(loadJsonFixture('notifications.rest.json')), operation: 'mentions' });
     pipeline.attach();
     expect(treatments()).toEqual({ '4001': 'collapse', '4002': null, '4003': 'blur' });
+  });
+});
+
+describe('AI model tier', () => {
+  beforeEach(() => loadHtmlFixture('synthetic-home-for-you.html'));
+
+  it('sends only unsettled posts, then hides what the model flags', async () => {
+    const model = deferredModel((text) => (text.includes('Not okay') ? scores({ toxicity: 0.81, insult: 0.78 }) : scores()));
+    const { pipeline, strikes } = setup('/home', { settings: modelOn, classify: model.classify });
+    pipeline.attach();
+    await settle();
+    // 2002 is settled by the word list; 2004 is the user's own post.
+    expect(model.requests.flat().sort()).toEqual([
+      'Just finished my morning run, feeling great! 🏃',
+      'This is the kind of reply people get. Not okay.',
+    ]);
+    expect(treatments()['2003']).toBeNull();
+
+    model.release();
+    await settle();
+    expect(treatments()).toMatchObject({ '2001': null, '2002': 'blur', '2003': 'blur' });
+    expect(placeholderText('2003')).toContain('model: toxicity 0.81');
+    expect(strikes.map((s) => s.postId).sort()).toEqual(['2002', '2003']);
+  });
+
+  it('blurs posts while they wait, when pre-blur is on', async () => {
+    const model = deferredModel(() => scores());
+    const { pipeline } = setup('/home', { settings: { model: { ...modelOn.model, preBlur: true } }, classify: model.classify });
+    pipeline.attach();
+    expect(treatments()['2001']).toBe('blur');
+    expect(placeholderText('2001')).toContain('Checking');
+    model.release();
+    await settle();
+    expect(treatments()['2001']).toBeNull();
+  });
+
+  it('asks nothing until the download is approved, and stops asking when the model is off', async () => {
+    const unapproved = deferredModel(() => scores());
+    setup('/home', { classify: unapproved.classify }).pipeline.attach();
+    await settle();
+    expect(unapproved.requests).toEqual([]);
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const off = deferredModel(() => null);
+    const { pipeline } = setup('/home', { settings: { model: { ...modelOn.model, preBlur: true } }, classify: off.classify });
+    pipeline.attach();
+    off.release();
+    await settle();
+    expect(treatments()['2001']).toBeNull();
+    pipeline.processAll();
+    await settle();
+    expect(off.requests).toHaveLength(1);
+  });
+
+  it('counts a mild word once the model corroborates it (thread reply, page-only signals)', async () => {
+    loadHtmlFixture('synthetic-thread.html');
+    const model = deferredModel((text) => (text.includes('loser') ? scores({ toxicity: 0.31 }) : scores()));
+    const { pipeline } = setup('/LakotaMan1/status/3000', { settings: modelOn, classify: model.classify });
+    pipeline.attach();
+    model.release();
+    await settle();
+    // Generated handle + default avatar = medium suspicion: a reply's mild word needs toxicity ≥ 0.25.
+    expect(treatments()['3007']).toBe('blur');
   });
 });
 

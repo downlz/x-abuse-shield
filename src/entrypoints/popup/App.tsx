@@ -3,6 +3,7 @@ import type { Settings } from '@/core/config/schema';
 import { healthKey, type TabHealth } from '@/shared/health';
 import { Check, Segmented } from '@/ui/controls';
 import { useSettings, useTodayStats } from '@/ui/hooks';
+import { ModelCard } from '@/ui/ModelCard';
 
 const PRESETS: { value: Settings['preset']; label: string }[] = [
   { value: 'relaxed', label: 'Relaxed' },
@@ -45,6 +46,8 @@ export function App() {
           <div className="muted">accounts muted today</div>
         </div>
       </div>
+
+      <ModelCard settings={settings} update={update} compact />
 
       <TabStatus tab={tab} />
 

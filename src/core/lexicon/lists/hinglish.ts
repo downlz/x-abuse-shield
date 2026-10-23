@@ -19,6 +19,10 @@ export const HINGLISH: LexiconEntry[] = [
     'bhosdi',
     'bhosdiwale',
     'bhosdiwala',
+    'bhosdiwali',
+    'bsdwale',
+    'bsdwala',
+    'bsdke',
     'bsdk',
     'bkl',
     'mkc',
@@ -38,6 +42,16 @@ export const HINGLISH: LexiconEntry[] = [
     'teri bhen ki',
     'maa chod',
     'maa ki chut',
+    // "gaand" alone is mild (and hinglishOnly); these phrases are aimed at someone.
+    // Stretched spellings match loosely: "gaand" = "gand".
+    'teri gand',
+    'gand mei',
+    'gand mein',
+    'gand me',
+    'gand mar',
+    'gand mara',
+    'gand marao',
+    'gand maar',
   ]),
   ...entries('obscene', 'strong', ['lode', 'loda', 'lund'], { hinglishOnly: true }),
 
@@ -64,7 +78,8 @@ export const HINGLISH: LexiconEntry[] = [
     'ullu ka pattha',
     'ullu ke patthe',
   ]),
-  ...entries('insult', 'strong', ['randi'], { hinglishOnly: true }),
+  // "Randi" is also a name; "dalla" is Italian for "from the".
+  ...entries('insult', 'strong', ['randi', 'dalla', 'dalle'], { hinglishOnly: true }),
 
   // Vulgar idioms not aimed at a person. Longer phrases override the strong
   // words inside them: "chutiya banana" means "to fool someone".
@@ -105,6 +120,10 @@ export const HINGLISH: LexiconEntry[] = [
     'bewkoof',
     'gaddar',
     'nikamma',
+    'nalla',
+    'nalle',
+    'nallo',
+    'nalli',
     'teri aukaat',
     'teri aukat',
     'chup kar',
@@ -122,5 +141,6 @@ export const HINGLISH_MARKERS = new Set([
   'mere', 'yaar', 'yar', 'bhai', 'karta', 'karti', 'karna', 'kar', 'kuch', 'kaise', 'aur', 'apni', 'apna',
   'apne', 'abe', 'arre', 'arey', 'raha', 'rahi', 'rahe', 'tha', 'thi', 'hoga', 'logon', 'logo', 'bahut',
   'bohot', 'sab', 'chahiye', 'wala', 'wale', 'wali', 'ko', 'ka', 'ki', 'ke', 'mein', 'toh', 'bhi', 'jo',
-  'yeh', 'woh', 'iska', 'uska', 'tujhe', 'mujhe', 'hum', 'kab', 'kahan', 'abhi', 'sirf', 'matlab',
+  'yeh', 'woh', 'iska', 'uska', 'iske', 'uske', 'tujhe', 'mujhe', 'hum', 'kab', 'kahan', 'abhi', 'sirf', 'matlab',
+  'mei', 'hoga',
 ]);

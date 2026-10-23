@@ -55,6 +55,16 @@ export interface Settings {
     /** Collapse copy-paste clusters even when no copy is abusive. */
     hideCleanClusters: boolean;
   };
+  model: {
+    /** Score posts with the on-device AI model. */
+    enabled: boolean;
+    /** The user agreed to the one-time model download (~289 MB). */
+    downloadApproved: boolean;
+    /** Unload the model after this many idle minutes, freeing ~850 MB. */
+    idleMinutes: number;
+    /** Blur posts until the model has scored them, so nothing flashes. */
+    preBlur: boolean;
+  };
   scoring: {
     nonEnglishOffset: number;
     suspicionOffsets: { medium: number; high: number };
@@ -62,5 +72,10 @@ export interface Settings {
     floor: number;
     /** Model toxicity needed before a mild word-list term counts, per suspicion level. */
     corroboration: { low: number; medium: number };
+    /**
+     * Mild words count only in replies and mentions. Calibration (68 posts):
+     * removed 3 of 5 false alarms (friendly swearing, quoting an insult) for 2 misses.
+     */
+    mildWordsRepliesOnly: boolean;
   };
 }

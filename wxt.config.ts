@@ -16,7 +16,7 @@ export default defineConfig({
   manifest: {
     name: 'X Abuse Shield',
     description: 'On-device multilingual abuse filter for x.com',
-    permissions: ['offscreen', 'storage', 'unlimitedStorage'],
+    permissions: ['offscreen', 'storage', 'unlimitedStorage', 'alarms'],
     // MV3 forbids remote code: ONNX Runtime's .wasm/.mjs ship inside the
     // extension (public/ort). Model weights are data and are fetched once.
     content_security_policy: {

@@ -82,15 +82,22 @@ async function visit(browser: Browser, path: string): Promise<{ frame: Frame; pa
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+/** Post 2002's timeline cell from the home fixture, as a template. */
+function repeatOffenderCell(): string {
+  const html = readFileSync(join(fixtures, 'x', 'synthetic-home-for-you.html'), 'utf8');
+  return /<!-- 2\. [\s\S]*?(<div data-testid="cellInnerDiv"[\s\S]*?<\/article>\s*<\/div><\/div><\/div>)/.exec(html)![1]!;
+}
+
 /** Three abusive posts by one author, to trigger an automatic mute. */
 function repeatOffenderArticles(): string {
-  const html = readFileSync(join(fixtures, 'x', 'synthetic-home-for-you.html'), 'utf8');
-  const cell = /<!-- 2\. [\s\S]*?(<div data-testid="cellInnerDiv"[\s\S]*?<\/article>\s*<\/div><\/div><\/div>)/.exec(html)![1]!;
+  const cell = repeatOffenderCell();
   return ['2101', '2102', '2103']
     .map((id, i) => cell.replaceAll('2002', id).replace('Chutiya fellow posting useless', ['Madarchod', 'bsdk chup kar', 'tu chutiya hai'][i]!))
     .join('\n');
 }
 
+// A fresh profile every run. Reusing one is unreliable: Chrome keeps running the previous build's
+// service worker for an extension re-installed over CDP. The cost is one model download (~1 min).
 rmSync(profileDir, { recursive: true, force: true });
 mkdirSync(shotsDir, { recursive: true });
 const browser = await puppeteer.launch({ headless: true, pipe: true, enableExtensions: true, userDataDir: profileDir });
@@ -172,6 +179,70 @@ try {
     });
   });
   check('content-script work under 2 ms per post (300-post batch, incl. DOM insertion)', perPostMs < 2, `${perPostMs.toFixed(3)} ms/post`);
+
+  // AI model tier: approve the download, wait for the model, then show posts only the model catches.
+  // Close earlier x.com tabs first: on approval they'd all ask the model to score their posts.
+  for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
+  const control = await browser.newPage();
+  await control.goto(`chrome-extension://${extensionId}/popup.html`);
+  await control.evaluate(`chrome.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
+  const worker = await (await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(extensionId))).worker();
+  worker?.on('console', (message) => console.log(`  [service worker] ${message.text()}`));
+  const loadStart = Date.now();
+  let modelStatus: { state: string; message?: string; progress?: number } | undefined;
+  let lastLogged = '';
+  while (Date.now() - loadStart < 6 * 60_000) {
+    modelStatus = (await control.evaluate(`chrome.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus)`)) as typeof modelStatus;
+    const line = JSON.stringify(modelStatus ?? null);
+    if (line !== lastLogged) console.log(`  model status after ${Math.round((Date.now() - loadStart) / 1000)} s: ${(lastLogged = line)}`);
+    if (modelStatus?.state === 'ready' || modelStatus?.state === 'error') break;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  modelStatus ??= { state: 'none' };
+  check('model downloads/loads after approval', modelStatus.state === 'ready', `${modelStatus.state} in ${((Date.now() - loadStart) / 1000).toFixed(1)} s${modelStatus.message ? ` — ${modelStatus.message}` : ''}`);
+  await control.close();
+
+  const modelOnly = ['2201', '2202']
+    .map((id, i) => repeatOffenderCell().replaceAll('2002', id).replaceAll('Srihars47664037', `model_test_${i}`).replace(
+      'Chutiya fellow posting useless',
+      ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'][i]!,
+    ))
+    .join('\n');
+  pages['/home'] = fakePage('synthetic-home-for-you.html', { url: API.home.url, via: 'fetch' }, modelOnly).replace(
+    'requestAnimationFrame(() => {',
+    `const rendered = performance.now();
+      new MutationObserver((_, observer) => {
+        const target = document.querySelector('article[data-xas-post="2201"]');
+        if (target) { window.__modelLatency = performance.now() - rendered; observer.disconnect(); }
+      }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-xas'] });
+      requestAnimationFrame(() => {`,
+  );
+  const modelPage = await visit(browser, '/home');
+  await modelPage.page.waitForFunction(() => (window as unknown as { __modelLatency?: number }).__modelLatency !== undefined, { timeout: 30_000 });
+  const latency = await modelPage.page.evaluate(() => (window as unknown as { __modelLatency: number }).__modelLatency);
+  const afterModel = await modelPage.page.evaluate(() =>
+    Object.fromEntries(['2201', '2202'].map((id) => [id, document.querySelector(`a[href$="/status/${id}"]`)?.closest('article')?.getAttribute('data-xas') ?? null])),
+  );
+  check('model hides an insult with no word-list hit, keeps a clean post', same(afterModel, { '2201': 'blur', '2202': null }), JSON.stringify(afterModel));
+  check('model verdict within ~300 ms of the post appearing (model loaded)', latency < 300, `${Math.round(latency)} ms`);
+  await modelPage.page.screenshot({ path: join(shotsDir, 'home-model.png'), fullPage: true });
+
+  // Optional (slow): the model unloads after the idle time. --idle sets it to 1 minute.
+  if (process.argv.includes('--idle')) {
+    for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
+    const idle = await browser.newPage();
+    await idle.goto(`chrome-extension://${extensionId}/popup.html`);
+    await idle.evaluate(`chrome.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 1, preBlur: false } } })`);
+    const idleStart = Date.now();
+    let state = '';
+    while (Date.now() - idleStart < 4 * 60_000 && state !== 'unloaded') {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      state = (await idle.evaluate(`chrome.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus?.state)`)) as string;
+    }
+    const offscreen = (await worker!.evaluate(`chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }).then((c) => c.length)`)) as number;
+    check('model unloads after the idle time', state === 'unloaded' && offscreen === 0, `${state} after ${Math.round((Date.now() - idleStart) / 1000)} s, ${offscreen} offscreen documents`);
+    await idle.close();
+  }
 
   // UI renders without errors.
   for (const name of ['popup', 'options']) {

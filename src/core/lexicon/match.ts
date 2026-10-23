@@ -88,7 +88,7 @@ export class Lexicon {
 
     const hinglish =
       tokens.some((t) => t.devanagari) ||
-      new Set(tokens.filter((t) => HINGLISH_MARKERS.has(t.exact)).map((t) => t.exact)).size >= 2 ||
+      new Set(tokens.filter((t) => HINGLISH_MARKERS.has(t.exact) || HINGLISH_MARKERS.has(t.loose)).map((t) => t.loose)).size >= 2 ||
       hits.some((h) => !h.hinglishOnly && (h.source === 'hinglish' || h.source === 'hi'));
 
     return {
