@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Chrome only: Firefox has no offscreen documents (it runs the model in a worker). -->
+    <meta name="manifest.exclude" content="['firefox']" />
     <title>X Abuse Shield — inference</title>
   </head>
   <body>

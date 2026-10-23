@@ -228,6 +228,13 @@ function Scopes({ settings, update }: { settings: Settings; update: Update }) {
       <Check checked={settings.scopes.focalPost} onChange={set('focalPost')} hint="you clicked on it, so it's shown by default">
         The opened post itself
       </Check>
+      <Check
+        checked={settings.exemptFollowing}
+        onChange={(exemptFollowing) => update((s) => ({ ...s, exemptFollowing }))}
+        hint="accounts you follow never count as suspicious either way"
+      >
+        Never filter accounts I follow
+      </Check>
       <p className="hint">Your own posts and accounts on your allowlist are never filtered.</p>
     </section>
   );
@@ -241,6 +248,9 @@ function WordLists({ settings, update }: { settings: Settings; update: Update })
       <Check checked={settings.lexicon.en} onChange={(en) => set({ en })}>English</Check>
       <Check checked={settings.lexicon.hi} onChange={(hi) => set({ hi })}>Hindi (Devanagari)</Check>
       <Check checked={settings.lexicon.hinglish} onChange={(hinglish) => set({ hinglish })}>Hinglish</Check>
+      <Check checked={settings.lexicon.emoji} onChange={(emoji) => set({ emoji })} hint="🤡 and 💩 only from suspicious accounts">
+        Insulting emoji (🖕 🤡 💩)
+      </Check>
       <p className="hint">
         Slurs and abuse aimed at someone hide a post on their own. Milder words (“pagal”, “idiot”) only count together
         with other evidence, so friendly teasing passes.

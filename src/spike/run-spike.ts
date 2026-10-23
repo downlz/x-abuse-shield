@@ -1,7 +1,7 @@
 import { env } from '@huggingface/transformers';
 import { CATEGORIES, type CategoryScores } from '@/core/engine/categories';
 import { BUNDLED_MODEL_DIR, MODEL_ID } from '@/adapters/inference/model';
-import { loadBundledClassifier } from '@/adapters/inference/ort-classifier';
+import { loadInPlaceClassifier } from '@/adapters/inference/ort-classifier';
 import { loadToxicityClassifier, type ToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
 import { chunk, latencyStats } from './stats';
 import type { SpikeProgress, SpikeRunResult, SpikeSample } from './types';
@@ -32,7 +32,7 @@ export async function runSpike(
   const loadStart = performance.now();
   const classifier =
     variant === 'bundled-ort'
-      ? await loadBundledClassifier({ modelBaseUrl: new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href, ortBaseUrl })
+      ? await loadInPlaceClassifier({ modelBaseUrl: new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href, remote: false, ortBaseUrl })
       : await loadToxicityClassifier({
           ortBaseUrl,
           sessionOptions: SPIKE_VARIANTS[variant],

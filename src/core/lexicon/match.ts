@@ -1,3 +1,4 @@
+import { EMOJI } from './lists/emoji';
 import { EN } from './lists/en';
 import { HI } from './lists/hi';
 import { HINGLISH, HINGLISH_MARKERS } from './lists/hinglish';
@@ -33,13 +34,20 @@ interface CompiledEntry {
   words: { exact: string; key: string; loose: boolean }[];
 }
 
-const LISTS: Record<LexiconLang, LexiconEntry[]> = { en: EN, hi: HI, hinglish: HINGLISH };
+const LISTS: Record<LexiconLang, LexiconEntry[]> = { en: EN, hi: HI, hinglish: HINGLISH, emoji: EMOJI };
+
+const EMOJI_CHAR = /\p{Extended_Pictographic}/gu;
+const SINGLE_EMOJI = /^\p{Extended_Pictographic}$/u;
+/** Emoji presentation selector and skin tones: "🖕🏽" counts as "🖕". */
+const EMOJI_VARIANT = /[️\u{1F3FB}-\u{1F3FF}]/gu;
 
 export class Lexicon {
   private readonly byExact = new Map<string, CompiledEntry[]>();
   private readonly byLoose = new Map<string, CompiledEntry[]>();
   private readonly prefixed: CompiledEntry[] = [];
   private readonly all: CompiledEntry[] = [];
+  /** Emoji aren't word tokens, so they're looked up separately. */
+  private readonly emoji = new Map<string, CompiledEntry>();
   private readonly allowed: Set<string>;
   private readonly rules = PHRASE_RULES;
 
@@ -50,7 +58,7 @@ export class Lexicon {
     for (const term of options.customBlock) {
       if (term.trim()) this.add({ term: term.trim(), category: 'insult', strength: 'strong' }, 'custom');
     }
-    this.allowed = new Set(options.customAllow.map(phraseKey).filter(Boolean));
+    this.allowed = new Set(options.customAllow.map((term) => emojiKey(term) ?? phraseKey(term)).filter(Boolean));
     this.rules = PHRASE_RULES.filter((rule) => options.languages[rule.lang]);
   }
 
@@ -78,6 +86,14 @@ export class Lexicon {
       i += found.words.length;
     }
 
+    // Each distinct emoji counts once: "🤡🤡🤡" is one hit.
+    for (const emoji of new Set(Array.from(text.matchAll(EMOJI_CHAR), (m) => m[0]))) {
+      const found = this.emoji.get(emoji);
+      if (!found || this.allowed.has(emoji)) continue;
+      const { term, category, strength } = found.entry;
+      hits.push({ term, matched: emoji, category, strength, source: found.source, hinglishOnly: false });
+    }
+
     const normalized = sentence(tokens);
     for (const rule of this.rules) {
       const m = rule.pattern.exec(normalized);
@@ -99,6 +115,11 @@ export class Lexicon {
   }
 
   private add(entry: LexiconEntry, source: CompiledEntry['source']) {
+    const emoji = emojiKey(entry.term);
+    if (emoji) {
+      this.emoji.set(emoji, { entry, source, words: [] });
+      return;
+    }
     const words = tokenize(entry.term).map((t) => {
       const loose = t.exact.length >= LOOSE_MIN_LENGTH;
       return { exact: t.exact, key: loose ? t.loose : t.exact, loose };
@@ -154,6 +175,12 @@ function wildcardEquals(masked: string, plain: string): boolean {
     else if (masked[k] !== plain[k]) return false;
   }
   return masks > 0 && masks <= masked.length / 2;
+}
+
+/** The emoji itself, without variants, when the term is a single emoji. */
+function emojiKey(term: string): string | null {
+  const plain = term.trim().replace(EMOJI_VARIANT, '');
+  return SINGLE_EMOJI.test(plain) ? plain : null;
 }
 
 function phraseKey(text: string): string {

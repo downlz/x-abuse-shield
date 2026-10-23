@@ -6,7 +6,7 @@ import { loadJsonFixture as fixture } from '../helpers';
 describe('collectRecords', () => {
   it('reads the current GraphQL shape (core.*, avatar.image_url)', () => {
     const { users, posts } = collectRecords(fixture('home-timeline.graphql.json'));
-    expect(users.map((u) => u.handle).sort()).toEqual(['Srihars47664037', 'longform_writer', 'priya_runs']);
+    expect(users.map((u) => u.handle).sort()).toEqual(['Srihars47664037', 'longform_writer', 'priya_runs', 'troll_acct']);
 
     const troll = users.find((u) => u.handle === 'Srihars47664037')!;
     expect(troll).toMatchObject({
@@ -28,7 +28,26 @@ describe('collectRecords', () => {
     const { posts } = collectRecords(fixture('home-timeline.graphql.json'));
     const long = posts.find((p) => p.id === '2005')!;
     expect(long.authorHandle).toBe('longform_writer');
-    expect(long.text).toContain('you absolute moron');
+    expect(long.text).toContain('you absolute dickhead');
+  });
+
+  it('links a quote to the quoted post, which is read as a post of its own', () => {
+    const { posts } = collectRecords(fixture('home-timeline.graphql.json'));
+    expect(posts.find((p) => p.id === '2003')?.quotedId).toBe('1990');
+    expect(posts.find((p) => p.id === '1990')).toMatchObject({ authorHandle: 'troll_acct', text: '@newsdesk shut the fuck up, nobody asked' });
+    // Older responses only have the id.
+    const [legacy] = collectRecords({ rest_id: '5', legacy: { full_text: 'look', quoted_status_id_str: '4' } }).posts;
+    expect(legacy?.quotedId).toBe('4');
+  });
+
+  it('reads whether you follow an account, in the current and older shapes', () => {
+    const user = (extra: object, legacy: object = {}) =>
+      collectRecords({ rest_id: '1', core: { screen_name: 'a' }, legacy: { followers_count: 5, ...legacy }, ...extra }).users[0]?.youFollow;
+    expect(user({ relationship_perspectives: { following: true } })).toBe(true);
+    expect(user({ relationship_perspectives: { following: false } }, { following: true })).toBe(false);
+    expect(user({}, { following: true })).toBe(true);
+    expect(user({})).toBeUndefined();
+    expect(collectRecords({ id_str: '2', screen_name: 'b', followers_count: 1, following: true }).users[0]?.youFollow).toBe(true);
   });
 
   it('reads the older shape with handle and date under legacy', () => {

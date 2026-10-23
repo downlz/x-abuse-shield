@@ -275,7 +275,7 @@ function Details({ entry }: { entry: ReviewEntry }) {
   );
 }
 
-const hinglishDetector = new Lexicon({ languages: { en: false, hi: true, hinglish: true }, customBlock: [], customAllow: [] });
+const hinglishDetector = new Lexicon({ languages: { en: false, hi: true, hinglish: true, emoji: false }, customBlock: [], customAllow: [] });
 
 function AddMissed() {
   const [open, setOpen] = useState(false);

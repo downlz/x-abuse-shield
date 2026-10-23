@@ -33,6 +33,11 @@ describe('assessAccount', () => {
     expect(result.level).toBe('medium');
   });
 
+  it('never rates an account you follow as suspicious', () => {
+    const account: AccountRecord = { handle: 'new_friend', createdAt: NOW - 3 * DAY, followers: 4, defaultAvatar: true, youFollow: true, source: 'api' };
+    expect(assessAccount(account, options, NOW)).toEqual({ score: 0, level: 'low', reasons: [] });
+  });
+
   it('caps page-only records at medium', () => {
     const account: AccountRecord = { handle: 'rahul48213977', defaultAvatar: true, source: 'dom' };
     expect(assessAccount(account, { ...options, weights: { ...DEFAULT_SIGNAL_WEIGHTS, defaultAvatar: 0.5 } }, NOW).level).toBe('medium');

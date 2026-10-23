@@ -2,6 +2,7 @@ import {
   IDLE_ALARM,
   modelAllowed,
   preload,
+  reportStatus,
   restingStatus,
   scoreTexts,
   setModelStatus,
@@ -28,12 +29,14 @@ import { addManualMute, normalizeHandle, recordStrike, unmute, withdrawStrike, t
 import { appendEntry, labelEntry, type ReviewEntry, type ReviewLabel } from '@/core/review/log';
 import { healthKey, type TabHealth } from '@/shared/health';
 import { isMessage, type Reply, type ScoreReply } from '@/shared/messages';
-import { MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
 
-/** Below this, the ~850 MB model is off by default (word lists only). */
+/** Below this, the ~500 MB model is off by default (word lists only). */
 const LOW_MEMORY_GB = 4;
 
-export default defineBackground(() => {
+// Firefox (Manifest V2): a persistent background page, which owns the model's worker.
+export default defineBackground({ persistent: true, main });
+
+function main() {
   // Single writer: strikes and stats from every tab are applied one at a time,
   // so concurrent tabs can't overwrite each other's updates.
   let queue: Promise<unknown> = Promise.resolve();
@@ -125,7 +128,7 @@ export default defineBackground(() => {
           .then(sendResponse, (error: unknown) => sendResponse({ ok: false, error: String(error) } satisfies ScoreReply));
         return true;
       case 'model:status':
-        void onModelStatus(message.status);
+        void reportStatus(message.status);
         return;
       case 'model:retry':
         return reply(preload());
@@ -135,13 +138,6 @@ export default defineBackground(() => {
   browser.tabs.onRemoved.addListener((tabId) => {
     void browser.storage.session.remove(healthKey(tabId));
   });
-});
-
-async function onModelStatus(status: ModelStatus): Promise<void> {
-  // A late "loading" report must not overwrite "off" after the user switched the model off.
-  const settings = await loadSettings();
-  if (!modelAllowed(settings)) return;
-  await browser.storage.session.set({ [MODEL_STATUS_KEY]: status });
 }
 
 async function onFlagged(entry: ReviewEntry, strike: Strike | undefined, counted: Set<string>): Promise<void> {
@@ -203,9 +199,11 @@ async function onMissed(text: string, directed: boolean, hinglish: boolean): Pro
 async function onHealth(tabId: number, health: TabHealth): Promise<void> {
   await browser.storage.session.set({ [healthKey(tabId)]: health });
   const broken = health.dom === 'broken';
-  await browser.action.setBadgeText({ tabId, text: broken ? '!' : '' });
+  // Manifest V2 (Firefox) calls the toolbar button browserAction.
+  const action = browser.action ?? browser.browserAction;
+  await action.setBadgeText({ tabId, text: broken ? '!' : '' });
   if (broken) {
-    await browser.action.setBadgeBackgroundColor({ tabId, color: '#d93025' });
-    await browser.action.setTitle({ tabId, title: "X Abuse Shield can't read posts here — X may have changed its layout" });
+    await action.setBadgeBackgroundColor({ tabId, color: '#d93025' });
+    await action.setTitle({ tabId, title: "X Abuse Shield can't read posts here — X may have changed its layout" });
   }
 }

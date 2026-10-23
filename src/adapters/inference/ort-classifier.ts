@@ -1,7 +1,7 @@
 /**
- * The shipped .ort model, run in place by ONNX Runtime (browser only). The
- * tokenizer still comes from Transformers.js; only the model session is ours,
- * because Transformers.js loads .onnx files and copies their weights.
+ * The in-place .ort model, run by ONNX Runtime (browser only). The tokenizer
+ * still comes from Transformers.js; only the model session is ours, because
+ * Transformers.js loads .onnx files and copies their weights.
  */
 import { AutoTokenizer, env, type Tensor } from '@huggingface/transformers';
 import * as ort from 'onnxruntime-web/webgpu';
@@ -9,31 +9,47 @@ import type { CategoryScores } from '@/core/engine/categories';
 import { BUNDLED_MODEL_FILE, IN_PLACE_SESSION_OPTIONS, MAX_TOKENS, MODEL_ID } from './model';
 import { configureWebRuntime, labelOrder, type ToxicityClassifier } from './toxicity-classifier';
 
-export interface BundledOptions {
-  /** Where the model folders are, e.g. `chrome-extension://<id>/models/`. */
+/** Cache API bucket for a hosted .ort model (the tokenizer goes in Transformers.js's own cache). */
+export const IN_PLACE_CACHE = 'x-abuse-shield-model';
+
+export interface InPlaceOptions {
+  /**
+   * Folder holding `<model id>/model.ort` and the tokenizer files:
+   * `chrome-extension://<id>/models/` when bundled, or a hosted `https://…/`.
+   */
   modelBaseUrl: string;
+  /** Hosted: download once and keep in the Cache API. Bundled: read from the extension. */
+  remote: boolean;
   /** Where ONNX Runtime's .mjs/.wasm are, e.g. `chrome-extension://<id>/ort/`. */
   ortBaseUrl: string;
-  /** 0–100 while reading the model file. */
+  /** 0–100 while reading or downloading the model file. */
   onProgress?: (percent: number) => void;
 }
 
-export async function loadBundledClassifier(options: BundledOptions): Promise<ToxicityClassifier> {
+export async function loadInPlaceClassifier(options: InPlaceOptions): Promise<ToxicityClassifier> {
   configureWebRuntime(options.ortBaseUrl);
-  // Tokenizer files come from the extension, never the network, and aren't copied into the Cache API.
-  env.allowLocalModels = true;
-  env.allowRemoteModels = false;
-  env.useBrowserCache = false;
-  env.localModelPath = options.modelBaseUrl;
+  if (options.remote) {
+    env.allowLocalModels = false;
+    env.allowRemoteModels = true;
+    env.useBrowserCache = true;
+    env.remoteHost = options.modelBaseUrl;
+    env.remotePathTemplate = '{model}/';
+  } else {
+    // Tokenizer files come from the extension, never the network, and aren't copied into the Cache API.
+    env.allowLocalModels = true;
+    env.allowRemoteModels = false;
+    env.useBrowserCache = false;
+    env.localModelPath = options.modelBaseUrl;
+  }
 
   const base = `${options.modelBaseUrl}${MODEL_ID}/`;
+  const read = (file: string, onProgress?: (percent: number) => void) =>
+    options.remote ? readCached(`${base}${file}`, onProgress) : readBytes(`${base}${file}`, onProgress);
   const [tokenizer, config, session] = await Promise.all([
     AutoTokenizer.from_pretrained(MODEL_ID),
-    fetch(`${base}config.json`).then((r) => r.json() as Promise<{ id2label: Record<string, string> }>),
+    read('config.json').then((bytes) => JSON.parse(new TextDecoder().decode(bytes)) as { id2label: Record<string, string> }),
     // The JS copy of the bytes is dropped once ONNX Runtime has them in WebAssembly memory.
-    readBytes(`${base}${BUNDLED_MODEL_FILE}`, options.onProgress).then((bytes) =>
-      ort.InferenceSession.create(bytes, IN_PLACE_SESSION_OPTIONS),
-    ),
+    read(BUNDLED_MODEL_FILE, options.onProgress).then((bytes) => ort.InferenceSession.create(bytes, IN_PLACE_SESSION_OPTIONS)),
   ]);
   const order = labelOrder(config.id2label);
 
@@ -59,11 +75,27 @@ export async function loadBundledClassifier(options: BundledOptions): Promise<To
   };
 }
 
+/** Whether a hosted model has already been downloaded. */
+export async function hostedModelCached(modelBaseUrl: string): Promise<boolean> {
+  const cache = await caches.open(IN_PLACE_CACHE);
+  return !!(await cache.match(`${modelBaseUrl}${MODEL_ID}/${BUNDLED_MODEL_FILE}`));
+}
+
 function toOrt(tensor: Tensor): ort.Tensor {
   return new ort.Tensor('int64', tensor.data as BigInt64Array, tensor.dims);
 }
 
-async function readBytes(url: string, onProgress?: (percent: number) => void): Promise<Uint8Array> {
+/** From the Cache API if downloaded before; otherwise downloads it and keeps a copy. */
+async function readCached(url: string, onProgress?: (percent: number) => void): Promise<Uint8Array<ArrayBuffer>> {
+  const cache = await caches.open(IN_PLACE_CACHE);
+  const cached = await cache.match(url);
+  if (cached) return new Uint8Array(await cached.arrayBuffer());
+  const bytes = await readBytes(url, onProgress);
+  await cache.put(url, new Response(bytes));
+  return bytes;
+}
+
+async function readBytes(url: string, onProgress?: (percent: number) => void): Promise<Uint8Array<ArrayBuffer>> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Couldn't read the model (${response.status})`);
   const total = Number(response.headers.get('content-length'));

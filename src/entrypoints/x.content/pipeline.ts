@@ -5,14 +5,14 @@ import { fingerprint } from '@/core/coordination/fingerprint';
 import type { Category, CategoryScores } from '@/core/engine/categories';
 import { decide, withoutMatchedWords, type ScoringConfig, type Verdict } from '@/core/engine/decide';
 import { Lexicon } from '@/core/lexicon/match';
-import { activeMute, type MuteState, type Strike } from '@/core/mute/mutes';
+import { activeMute, type MuteEntry, type MuteState, type Strike } from '@/core/mute/mutes';
 import type { ReviewEntry } from '@/core/review/log';
 import { assessAccount, type AccountRecord, type Assessment } from '@/core/signals/suspicion';
 import type { RecordsPayload } from '@/adapters/x-api/bridge';
 import { isDefaultAvatarUrl, type PostRecord } from '@/adapters/x-api/fields';
 import { detectPageContext, focalPostId, ownHandle, type PageContext } from '@/adapters/x-dom/context';
-import { extractPost, type DomPost } from '@/adapters/x-dom/extract';
-import { isOwnNode, render, type Treatment } from '@/adapters/x-dom/render';
+import { extractPost, quoteCard, type DomPost } from '@/adapters/x-dom/extract';
+import { isOwnNode, render, syncTheme, type Treatment } from '@/adapters/x-dom/render';
 import { X } from '@/adapters/x-dom/selectors';
 import type { TabHealth } from '@/shared/health';
 
@@ -160,9 +160,11 @@ export class ContentPipeline {
     for (const post of payload.posts) this.apiPosts.set(post.id, post);
 
     // Records normally arrive before X renders the posts. If they came late,
-    // re-check posts that were scored on page-only signals.
+    // re-check posts that were scored on page-only signals, and quotes, which
+    // can only be scored once X's data names the quoted post.
     const late = [...this.evaluations.entries()].filter(([, e]) => !e.hadRecord && arrived.has(e.handle)).map(([id]) => id);
-    if (late.length > 0) this.reevaluate(late);
+    const quoting = payload.posts.filter((post) => post.quotedId && this.articles.has(post.id)).map((post) => post.id);
+    if (late.length + quoting.length > 0) this.reevaluate([...new Set([...late, ...quoting])]);
   }
 
   reveal(postId: string): void {
@@ -191,6 +193,7 @@ export class ContentPipeline {
     const context = detectPageContext(this.deps.doc, this.deps.path());
     const focalId = context === 'thread' ? focalPostId(this.deps.path()) : undefined;
     this.me ??= ownHandle(this.deps.doc);
+    syncTheme(this.deps.doc);
     for (const article of articles) this.processOne(article, context, focalId);
     this.reportHealth();
   }
@@ -201,39 +204,59 @@ export class ContentPipeline {
     if (!post) return;
     this.stats.extracted++;
     this.articles.set(post.id, article);
-    const revealed = this.revealed.has(post.id);
+    const active = this.settings.enabled && this.inScope(context, post.id === focalId);
+    render(article, post.id, active ? this.treat(post, context, focalId, false) : null, this.revealed.has(post.id));
+
+    const card = quoteCard(article);
+    if (!card) return;
+    const quoted = active ? this.quotedPost(post) : null;
+    if (quoted) this.articles.set(quoted.id, article);
+    render(card, quoted?.id ?? '', quoted && this.treat(quoted, context, focalId, true), !!quoted && this.revealed.has(quoted.id));
+  }
+
+  /** How to show a post, or a post quoted inside another; reports it if newly hidden. */
+  private treat(post: DomPost, context: PageContext, focalId: string | undefined, quoted: boolean): Treatment | null {
     const handle = post.handle.toLowerCase();
+    const now = this.deps.now();
+    // X hides a muted account's reposts too, whoever wrote the post.
+    const reposter = post.repostedBy?.toLowerCase();
+    const reposterMute = reposter && reposter !== handle ? activeMute(this.muteState.mutes, reposter, now) : undefined;
+    if (reposterMute) return this.mutedTreatment(post.repostedBy!, reposterMute.reason, 'reposted by a muted account');
 
-    if (!this.settings.enabled || !this.inScope(context, post.id === focalId) || handle === this.me || this.allowlisted(handle)) {
-      render(article, post.id, null, revealed);
-      return;
-    }
+    if (handle === this.me || this.allowlisted(handle) || (this.settings.exemptFollowing && this.accounts.get(handle)?.youFollow)) return null;
+    const mute = activeMute(this.muteState.mutes, handle, now);
+    if (mute) return this.mutedTreatment(post.handle, mute.reason, quoted ? 'quoted post' : undefined);
+    if (this.notAbusive.has(post.id)) return null;
 
-    const mute = activeMute(this.muteState.mutes, handle, this.deps.now());
-    if (mute) {
-      const detail = mute.reason === 'strikes' ? 'muted after repeated abuse' : 'muted by you';
-      const treatment: Treatment = { action: this.settings.actions.muted, label: `Muted @${post.handle}`, detail, actions: ['unmute'] };
-      render(article, post.id, treatment, revealed);
-      return;
-    }
-
-    if (this.notAbusive.has(post.id)) {
-      render(article, post.id, null, revealed);
-      return;
-    }
-
-    const evaluation = this.evaluate(post, context, focalId);
-    render(article, post.id, this.treatmentFor(evaluation), revealed);
-
+    const evaluation = this.evaluate(post, context, focalId, quoted);
     if (evaluation.verdict.flagged && !this.reported.has(post.id)) {
       this.reported.add(post.id);
-      const now = this.deps.now();
       const strike = evaluation.strike ? { handle, postId: post.id, at: now, reasons: evaluation.verdict.reasons } : undefined;
       this.deps.onFlagged({ ...evaluation.entry, at: now }, strike);
     }
+    return this.treatmentFor(evaluation, post.handle, quoted);
   }
 
-  private evaluate(post: DomPost, context: PageContext, focalId: string | undefined): Evaluation {
+  private mutedTreatment(handle: string, reason: MuteEntry['reason'], note?: string): Treatment {
+    const why = reason === 'strikes' ? 'muted after repeated abuse' : 'muted by you';
+    return { action: this.settings.actions.muted, label: `Muted @${handle}`, detail: note ? `${note} · ${why}` : why, actions: ['unmute'], handle };
+  }
+
+  /**
+   * The post quoted inside this one, scored on its own as a post by its
+   * author. Needs its id from X's data (the card on the page has no link);
+   * without it the quote is left alone.
+   */
+  private quotedPost(post: DomPost): DomPost | null {
+    const id = this.apiPosts.get(post.id)?.quotedId;
+    const record = id ? this.apiPosts.get(id) : undefined;
+    const handle = record?.authorHandle ?? post.quotedHandle;
+    const text = record?.text ?? post.quotedText;
+    if (!id || !handle || !text) return null;
+    return { id, handle, text, lang: record?.lang, postedAt: record?.createdAt, blueVerified: false };
+  }
+
+  private evaluate(post: DomPost, context: PageContext, focalId: string | undefined, quoted = false): Evaluation {
     const apiPost = this.apiPosts.get(post.id);
     const text = apiPost?.text ?? post.text;
     const previous = this.evaluations.get(post.id);
@@ -241,7 +264,10 @@ export class ContentPipeline {
 
     const handle = post.handle.toLowerCase();
     const match = this.lexicon.match(text);
-    const directed = context === 'notifications' || (context === 'thread' && post.id !== focalId) || !!apiPost?.inReplyToStatusId;
+    // A quoted post is aimed at someone only if it was itself a reply; where it's shown doesn't matter.
+    const directed = quoted
+      ? !!apiPost?.inReplyToStatusId
+      : context === 'notifications' || (context === 'thread' && post.id !== focalId) || !!apiPost?.inReplyToStatusId;
     const lang = apiPost?.lang ?? post.lang;
     const nonEnglish = match.hinglish || (!!lang && lang !== 'en' && !NEUTRAL_LANGS.has(lang));
 
@@ -328,7 +354,8 @@ export class ContentPipeline {
       entry,
     };
     this.evaluations.set(post.id, evaluation);
-    if (!previous) {
+    // Health counts the posts on the page, not the ones quoted inside them.
+    if (!previous && !quoted) {
       this.stats.evaluated++;
       if (record) this.stats.withRecord++;
     }
@@ -351,7 +378,7 @@ export class ContentPipeline {
     if (articles.length > 0) this.process(articles);
   }
 
-  private treatmentFor(evaluation: Evaluation): Treatment | null {
+  private treatmentFor(evaluation: Evaluation, handle: string, quoted: boolean): Treatment | null {
     const { verdict } = evaluation;
     if (!verdict.flagged) {
       return evaluation.awaitingModel && this.settings.model.preBlur
@@ -363,9 +390,11 @@ export class ContentPipeline {
     const shown = reason && !this.settings.display.showMatchedWords ? withoutMatchedWords(reason) : reason;
     return {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
-      label: 'Hidden by Abuse Shield',
+      label: quoted ? 'Quoted post hidden by Abuse Shield' : 'Hidden by Abuse Shield',
       detail: shown ? `${what} · ${shown}` : what,
-      actions: ['not-abusive', 'mute', 'mute-on-x'],
+      // X's ⋯ menu belongs to the quoting post, so "Mute on X" can't reach a quoted author.
+      actions: quoted ? ['not-abusive', 'mute'] : ['not-abusive', 'mute', 'mute-on-x'],
+      handle,
     };
   }
 
@@ -444,7 +473,7 @@ export class ContentPipeline {
     if (key !== this.lexiconKey) {
       this.lexiconKey = key;
       this.lexicon = new Lexicon({
-        languages: { en: settings.lexicon.en, hi: settings.lexicon.hi, hinglish: settings.lexicon.hinglish },
+        languages: { en: settings.lexicon.en, hi: settings.lexicon.hi, hinglish: settings.lexicon.hinglish, emoji: settings.lexicon.emoji },
         customBlock: settings.lexicon.customBlock,
         customAllow: settings.lexicon.customAllow,
       });

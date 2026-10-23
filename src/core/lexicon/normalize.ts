@@ -18,7 +18,8 @@ export interface Token {
   masked: boolean;
 }
 
-const ZERO_WIDTH = /[​-‍⁠﻿­]/g;
+/** Zero-width and soft-hyphen characters, plus bidi controls (RLM, overrides, isolates) that can hide inside a word. */
+const ZERO_WIDTH = /[​-‏‪-‮⁠-⁤⁦-⁩﻿­]/g;
 const MENTION_OR_URL = /https?:\/\/\S+|www\.\S+|@\w+/giu;
 const TOKEN = /[\p{L}\p{M}\p{N}*#%@$!._'’-]+/gu;
 const EDGE_PUNCTUATION = /^[!._'’-]+|[!._'’-]+$/g;

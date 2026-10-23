@@ -1,6 +1,7 @@
 import type { Category } from '../engine/categories';
 
-export type LexiconLang = 'en' | 'hi' | 'hinglish';
+/** A built-in list. 'emoji' holds insulting emoji, used in every language. */
+export type LexiconLang = 'en' | 'hi' | 'hinglish' | 'emoji';
 
 /**
  * strong: flags on its own (slurs, targeted insults, "fuck you").

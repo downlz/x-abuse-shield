@@ -1,18 +1,60 @@
-// End-to-end smoke test in Chrome for Testing with the built extension.
+// End-to-end smoke test with the built extension, in Chrome for Testing or,
+// with --firefox, in the installed Firefox (FIREFOX_PATH to override).
+//
+//   npm run test:e2e            npm run test:e2e:firefox
+//   npm run test:e2e:hosted     npm run test:e2e:hosted -- --firefox
 //
 // x.com is faked with request interception: each page boots like X does —
 // fetch the API data (via fetch() or XHR), then render the posts — using the
 // synthetic fixtures. Checks run in requestAnimationFrame, i.e. before the
 // browser paints, so a post that is hidden there never flashes.
-import { readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 const root = join(import.meta.dirname, '..');
-const extensionPath = join(root, '.output', 'chrome-mv3');
+const firefox = process.argv.includes('--firefox');
+const extensionPath = join(root, '.output', firefox ? 'firefox-mv2' : 'chrome-mv3');
 const profileDir = join(root, '.e2e-profile');
-const shotsDir = join(root, 'spike', 'results', 'e2e');
+const shotsDir = join(root, 'spike', 'results', firefox ? 'e2e-firefox' : 'e2e');
+/** Firefox gives each install a random moz-extension:// host; a pref pins it so the test can open extension pages. */
+const FIREFOX_UUID = '5b0d6c1e-3f2a-4c8e-9a71-0e4b2d9c6f13';
+/** The extension API as seen from an extension page (Firefox's chrome.* has no promises in Manifest V2). */
+const api = firefox ? 'browser' : 'chrome';
 const fixtures = join(root, 'tests', 'fixtures');
+
+/**
+ * --hosted: builds the extension without the model, as with WXT_MODEL_URL
+ * pointing at a real host, and serves public/models from a local "model
+ * host". The extension downloads the model on first use.
+ */
+const hosted = process.argv.includes('--hosted');
+const MODEL_HOST_PORT = 8787;
+const modelsDir = join(root, 'public', 'models');
+/** Paths the model host was asked for. */
+const modelRequests: string[] = [];
+if (hosted) {
+  execSync(`npx wxt build${firefox ? ' -b firefox' : ''}`, {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, WXT_BUNDLE_MODEL: 'false', WXT_MODEL_URL: `http://localhost:${MODEL_HOST_PORT}/` },
+  });
+  if (existsSync(join(extensionPath, 'models'))) throw new Error('The hosted build still contains the model');
+}
+const modelHost = hosted
+  ? createServer((request, response) => {
+      const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+      modelRequests.push(path);
+      const file = join(modelsDir, path);
+      // Extension pages fetch it cross-origin, as from Hugging Face.
+      const cors = { 'access-control-allow-origin': '*' };
+      if (!file.startsWith(modelsDir) || !existsSync(file) || !statSync(file).isFile()) return void response.writeHead(404, cors).end();
+      response.writeHead(200, { ...cors, 'content-length': statSync(file).size });
+      createReadStream(file).pipe(response);
+    }).listen(MODEL_HOST_PORT)
+  : null;
 
 type Frame = Record<string, string | null>;
 const results: { name: string; ok: boolean; detail: string }[] = [];
@@ -60,10 +102,13 @@ function fakePage(fixture: string, api: { url: string; via: 'fetch' | 'xhr' }, e
       document.body.append(document.getElementById('app').content.cloneNode(true));
       ${FAKE_X_MENU}
       requestAnimationFrame(() => {
-        window.__frame = Object.fromEntries([...document.querySelectorAll('article[data-testid="tweet"]')].map((a) => {
+        const posts = [...document.querySelectorAll('article[data-testid="tweet"]')].map((a) => {
           const href = a.querySelector('a[href*="/status/"] time')?.closest('a')?.getAttribute('href') ?? '';
           return [(/status\\/(\\d+)/.exec(href) ?? [])[1] ?? 'ad', a.getAttribute('data-xas')];
-        }));
+        });
+        // Quoted posts hidden inside another post, as "quote:<id>".
+        const quotes = [...document.querySelectorAll('article [data-xas-post]:not(article)')].map((q) => ['quote:' + q.getAttribute('data-xas-post'), q.getAttribute('data-xas')]);
+        window.__frame = Object.fromEntries([...posts, ...quotes]);
       });
     }, 400);
   </script>`;
@@ -122,23 +167,67 @@ function repeatOffenderArticles(): string {
 }
 
 // A fresh profile every run. Reusing one is unreliable: Chrome keeps running the previous build's
-// service worker for an extension re-installed over CDP. The cost is one model download (~1 min).
+// service worker for an extension re-installed over CDP. (Firefox gets a temporary profile.)
 rmSync(profileDir, { recursive: true, force: true });
 mkdirSync(shotsDir, { recursive: true });
-const browser = await puppeteer.launch({ headless: true, pipe: true, enableExtensions: true, userDataDir: profileDir });
+const browser = firefox
+  ? await puppeteer.launch({
+      browser: 'firefox',
+      executablePath: process.env.FIREFOX_PATH ?? 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+      headless: true,
+      // Lets WebDriver BiDi open moz-extension:// pages.
+      args: ['--remote-allow-system-access'],
+      extraPrefsFirefox: { 'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@local': FIREFOX_UUID }) },
+    })
+  : await puppeteer.launch({ headless: true, pipe: true, enableExtensions: true, userDataDir: profileDir });
 try {
   const extensionId = await browser.installExtension(extensionPath);
+  const extensionUrl = (path: string) => (firefox ? `moz-extension://${FIREFOX_UUID}/${path}` : `chrome-extension://${extensionId}/${path}`);
+  /** Firefox: Puppeteer misses the load event of moz-extension:// pages (they load in another process), so poll instead. */
+  const openExtensionPage = async (page: Page, path: string) => {
+    const url = extensionUrl(path);
+    if (!firefox) return void (await page.goto(url));
+    void page.goto(url, { timeout: 0 }).catch(() => undefined);
+    for (const start = Date.now(); Date.now() - start < 15_000; await new Promise((resolve) => setTimeout(resolve, 100))) {
+      const loaded = await page.evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete'`).catch(() => false);
+      if (loaded) return;
+    }
+    throw new Error(`${path} didn't load`);
+  };
+  /** Polls the model's status until it's ready or failed, logging each change. */
+  const waitForModel = async (page: Page) => {
+    const start = Date.now();
+    let status: { state: string; message?: string } | undefined;
+    let lastLogged = '';
+    while (Date.now() - start < 6 * 60_000) {
+      status = (await page.evaluate(`${api}.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus)`)) as typeof status;
+      const line = JSON.stringify(status ?? null);
+      if (line !== lastLogged) console.log(`  model status after ${Math.round((Date.now() - start) / 1000)} s: ${(lastLogged = line)}`);
+      if (status?.state === 'ready' || status?.state === 'error') break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    status ??= { state: 'none' };
+    return `${status.state} in ${((Date.now() - start) / 1000).toFixed(1)} s${status.message ? ` — ${status.message}` : ''}`;
+  };
   // Let the service worker write default settings.
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   pages = {
     '/home': fakePage('synthetic-home-for-you.html', { url: API.home.url, via: 'fetch' }),
-    '/LakotaMan1/status/3000': fakePage('synthetic-thread.html', { url: API.thread.url, via: 'fetch' }),
+    // In X's "Dim" theme, which X sets as the body's background colour.
+    '/LakotaMan1/status/3000': fakePage('synthetic-thread.html', { url: API.thread.url, via: 'fetch' }).replace(
+      '<body>',
+      '<body style="background-color: rgb(21, 32, 43);">',
+    ),
     '/notifications/mentions': fakePage('synthetic-notifications.html', { url: API.notifications.url, via: 'xhr' }),
   };
 
   const home = await visit(browser, '/home');
-  check('home: word-list abuse hidden before paint, others untouched', same(home.frame, { '2001': null, '2002': 'blur', '2003': null, '2004': null, ad: null }), JSON.stringify(home.frame));
+  check(
+    'home: word-list abuse hidden before paint, others untouched; an abusive quoted post hidden inside a clean one',
+    same(home.frame, { '2001': null, '2002': 'blur', '2003': null, '2004': null, ad: null, 'quote:1990': 'blur' }),
+    JSON.stringify(home.frame),
+  );
   await home.page.screenshot({ path: join(shotsDir, 'home.png'), fullPage: true });
 
   const thread = await visit(browser, '/LakotaMan1/status/3000');
@@ -148,6 +237,8 @@ try {
     JSON.stringify(thread.frame),
   );
   await thread.page.screenshot({ path: join(shotsDir, 'thread.png'), fullPage: true });
+  const placeholderColor = await thread.page.$eval('article[data-xas-post="3004"] .xas-placeholder', (el) => getComputedStyle(el).color);
+  check('dark theme: placeholder text follows X’s theme', placeholderColor === 'rgb(231, 233, 234)', placeholderColor);
 
   const notifications = await visit(browser, '/notifications/mentions');
   check(
@@ -168,8 +259,8 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 800));
   const store = async () => {
     const page = await browser.newPage();
-    await page.goto(`chrome-extension://${extensionId}/popup.html`);
-    const data = (await page.evaluate('chrome.storage.local.get(null)')) as {
+    await openExtensionPage(page, 'popup.html');
+    const data = (await page.evaluate(`${api}.storage.local.get(null)`)) as {
       reviewLog?: { postId: string; label?: string; reasons: string[] }[];
       overrides?: { notAbusive: string[] };
       muteState?: { mutes: { handle: string; reason: string }[] };
@@ -199,14 +290,15 @@ try {
 
   const review = await browser.newPage();
   await review.setViewport({ width: 900, height: 900 });
-  await review.goto(`chrome-extension://${extensionId}/review.html`);
+  await openExtensionPage(review, 'review.html');
   await review.waitForSelector('article.entry', { timeout: 5000 });
   const reviewed = await review.evaluate(() => ({
     entries: document.querySelectorAll('article.entry').length,
     exportLabel: [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Export labelled'))?.textContent,
   }));
   check('review page lists hidden posts with reasons', reviewed.entries >= 5 && reviewed.exportLabel === 'Export labelled posts (1)', JSON.stringify(reviewed));
-  await review.screenshot({ path: join(shotsDir, 'review.png'), fullPage: true });
+  // Firefox's WebDriver BiDi can't capture extension pages.
+  if (!firefox) await review.screenshot({ path: join(shotsDir, 'review.png'), fullPage: true });
   await review.close();
 
   // Repeat offender → automatic mute → hidden everywhere as muted.
@@ -214,14 +306,14 @@ try {
   await visit(browser, '/home');
   await new Promise((resolve) => setTimeout(resolve, 1000));
   const ext = await browser.newPage();
-  await ext.goto(`chrome-extension://${extensionId}/popup.html`);
-  const stored = (await ext.evaluate('chrome.storage.local.get(null)')) as {
+  await openExtensionPage(ext, 'popup.html');
+  const stored = (await ext.evaluate(`${api}.storage.local.get(null)`)) as {
     muteState?: { mutes: { handle: string }[]; strikes: unknown[] };
     stats?: { flagged: number; muted: number };
   };
   check('3 strikes mute the author', stored.muteState?.mutes.some((m) => m.handle === 'srihars47664037') === true, JSON.stringify(stored.muteState?.mutes));
-  // 2002 · 3004–3007 · 4001, 4003 · 2101–2103 (2002 again on the second visit isn't counted twice).
-  check('stats count hidden posts once each', stored.stats?.flagged === 10 && stored.stats.muted === 1, JSON.stringify(stored.stats));
+  // 2002, quoted 1990 · 3004–3007 · 4001, 4003 · 2101–2103 (2002 again on the second visit isn't counted twice).
+  check('stats count hidden posts once each', stored.stats?.flagged === 11 && stored.stats.muted === 1, JSON.stringify(stored.stats));
 
   pages['/home'] = fakePage('synthetic-home-for-you.html', { url: API.home.url, via: 'fetch' });
   const after = await visit(browser, '/home');
@@ -257,22 +349,25 @@ try {
   // Close earlier x.com tabs first: on approval they'd all ask the model to score their posts.
   for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
   const control = await browser.newPage();
-  await control.goto(`chrome-extension://${extensionId}/popup.html`);
-  await control.evaluate(`chrome.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
-  const worker = await (await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(extensionId))).worker();
+  await openExtensionPage(control, 'popup.html');
+  await control.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
+  const worker = firefox ? null : await (await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(extensionId))).worker();
   worker?.on('console', (message) => console.log(`  [service worker] ${message.text()}`));
-  const loadStart = Date.now();
-  let modelStatus: { state: string; message?: string; progress?: number } | undefined;
-  let lastLogged = '';
-  while (Date.now() - loadStart < 6 * 60_000) {
-    modelStatus = (await control.evaluate(`chrome.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus)`)) as typeof modelStatus;
-    const line = JSON.stringify(modelStatus ?? null);
-    if (line !== lastLogged) console.log(`  model status after ${Math.round((Date.now() - loadStart) / 1000)} s: ${(lastLogged = line)}`);
-    if (modelStatus?.state === 'ready' || modelStatus?.state === 'error') break;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+  const loaded = await waitForModel(control);
+  check('model downloads/loads after approval', loaded.startsWith('ready'), loaded);
+  if (hosted) {
+    const downloads = modelRequests.filter((path) => path.endsWith('/model.ort')).length;
+    check('hosted: model downloaded once from the model host', downloads === 1, modelRequests.join(', '));
+    // Switching the model off unloads it; switched on again, it must load from the cached copy.
+    const before = modelRequests.length;
+    const setEnabled = (enabled: boolean) =>
+      control.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: ${enabled}, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
+    await setEnabled(false);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await setEnabled(true);
+    const reloaded = await waitForModel(control);
+    check('hosted: loading again uses the cached copy, no new download', reloaded.startsWith('ready') && modelRequests.length === before, `${reloaded}, ${modelRequests.length - before} new requests`);
   }
-  modelStatus ??= { state: 'none' };
-  check('model downloads/loads after approval', modelStatus.state === 'ready', `${modelStatus.state} in ${((Date.now() - loadStart) / 1000).toFixed(1)} s${modelStatus.message ? ` — ${modelStatus.message}` : ''}`);
   await control.close();
 
   const modelOnly = ['2201', '2202']
@@ -297,22 +392,25 @@ try {
     Object.fromEntries(['2201', '2202'].map((id) => [id, document.querySelector(`a[href$="/status/${id}"]`)?.closest('article')?.getAttribute('data-xas') ?? null])),
   );
   check('model hides an insult with no word-list hit, keeps a clean post', same(afterModel, { '2201': 'blur', '2202': null }), JSON.stringify(afterModel));
-  check('model verdict within ~300 ms of the post appearing (model loaded)', latency < 300, `${Math.round(latency)} ms`);
+  // Firefox runs the model on one thread: extension pages can't be cross-origin isolated there.
+  const latencyLimit = firefox ? 1000 : 300;
+  check(`model verdict within ~${latencyLimit} ms of the post appearing (model loaded)`, latency < latencyLimit, `${Math.round(latency)} ms`);
   await modelPage.page.screenshot({ path: join(shotsDir, 'home-model.png'), fullPage: true });
 
   // Optional (slow): the model unloads after the idle time. --idle sets it to 1 minute.
   if (process.argv.includes('--idle')) {
     for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
     const idle = await browser.newPage();
-    await idle.goto(`chrome-extension://${extensionId}/popup.html`);
-    await idle.evaluate(`chrome.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 1, preBlur: false } } })`);
+    await openExtensionPage(idle, 'popup.html');
+    await idle.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 1, preBlur: false } } })`);
     const idleStart = Date.now();
     let state = '';
     while (Date.now() - idleStart < 4 * 60_000 && state !== 'unloaded') {
       await new Promise((resolve) => setTimeout(resolve, 5000));
-      state = (await idle.evaluate(`chrome.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus?.state)`)) as string;
+      state = (await idle.evaluate(`${api}.storage.session.get('modelStatus').then(({ modelStatus }) => modelStatus?.state)`)) as string;
     }
-    const offscreen = (await worker!.evaluate(`chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }).then((c) => c.length)`)) as number;
+    // Firefox's model worker is private to the background page; only its status is visible here.
+    const offscreen = worker ? ((await worker.evaluate(`chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }).then((c) => c.length)`)) as number) : 0;
     check('model unloads after the idle time', state === 'unloaded' && offscreen === 0, `${state} after ${Math.round((Date.now() - idleStart) / 1000)} s, ${offscreen} offscreen documents`);
     await idle.close();
   }
@@ -324,15 +422,16 @@ try {
     ui.on('pageerror', (e) => errors.push(String(e)));
     ui.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     await ui.setViewport({ width: name === 'popup' ? 360 : 900, height: 900 });
-    await ui.goto(`chrome-extension://${extensionId}/${name}.html`);
+    await openExtensionPage(ui, `${name}.html`);
     await new Promise((resolve) => setTimeout(resolve, 800));
-    await ui.screenshot({ path: join(shotsDir, `${name}.png`), fullPage: true });
+    if (!firefox) await ui.screenshot({ path: join(shotsDir, `${name}.png`), fullPage: true });
     check(`${name} page renders without errors`, errors.length === 0, errors.join(' | '));
   }
 } finally {
   await browser.close();
+  modelHost?.close();
 }
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots: spike/results/e2e/`);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots: spike/results/${firefox ? 'e2e-firefox' : 'e2e'}/`);
 process.exitCode = failed.length > 0 ? 1 : 0;

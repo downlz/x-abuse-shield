@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Chrome only: the spike runs in the offscreen document, which Firefox doesn't have. -->
+    <meta name="manifest.exclude" content="['firefox']" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Model Spike</title>
     <style>
