@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "description": "On-device multilingual abuse filter for x.com",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "wxt",

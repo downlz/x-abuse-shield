@@ -4,11 +4,6 @@ On-device, multilingual abuse filter for x.com. Scores posts with
 [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
 via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
 
-> **Status:** version 0.2.0, for Chrome (and Brave) and Firefox: word lists, account checks,
-> copy-paste detection, strikes and local mutes, the on-device AI model, the review page, and
-> hardening for quotes, reposts, emoji, long posts and dark themes. It's distributed here on GitHub,
-> not through the browser stores. See [docs/PLAN.md](docs/PLAN.md).
-
 ## Install
 
 Download the latest version from **[Releases](https://github.com/downlz/x-abuse-shield/releases/latest)**:
@@ -82,6 +77,17 @@ Why that matters:
 - **Your account stays safe.** Nothing is automated against X, so there's no bulk-blocking behaviour that could get your account flagged.
 
 What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import block lists. Block-list tools remain the right choice for that, and they work alongside this extension.
+
+## Planned features
+
+- **A smaller, lighter model.** Trimming the model's vocabulary to the languages we need should cut memory while loaded from ~500 MB to ~200–300 MB and the shipped model from 289 MB to ~60–90 MB, with accuracy checked against the calibration set before switching.
+- **Firefox for Android.** The desktop Firefox build on phones, with a responsive popup and settings, falling back to word lists only where memory is tight.
+- **Safari on iPhone and iPad.** A Safari build of the extension, with word lists only or the model running in the companion app if iOS memory limits are too tight.
+- **Edge and Opera.** Builds tested on both browsers.
+- **Mutes across devices.** Import/export works today; later, "Mute on X" so mutes sync through X itself.
+- **Flag a visible post as abusive** directly on x.com, instead of through "Add a missed post" on the review page.
+
+Details and progress are in [docs/PLAN.md](docs/PLAN.md).
 
 ## Build from source
 
@@ -188,3 +194,7 @@ Fixtures contain the posts that were on screen, so don't publish them.
 | `src/entrypoints/` | Content scripts (`x.content/`, MAIN-world `x-api.content.ts`), background, popup, options, offscreen document (Chrome), model worker (Firefox), spike page (Chrome) |
 | `src/ui/` | Shared React hooks, controls and theme for the popup and settings |
 | `scripts/` | Spike runners, end-to-end smoke test, build helpers |
+
+## License
+
+[MIT](LICENSE). The bundled model, [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small), is licensed separately under Apache-2.0.
