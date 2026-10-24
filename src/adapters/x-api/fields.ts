@@ -109,6 +109,22 @@ export function readRestTweet(obj: Obj): PostRecord | null {
   };
 }
 
+/**
+ * The logged-in user's handle, from the Viewer query ({ data: { viewer: { user_results: { result } } } })
+ * or REST account/settings.json ({ screen_name, … } without the id/followers of a user object).
+ * The page's sidebar link isn't there in X's phone layout.
+ */
+export function readViewer(url: string, json: unknown): string | undefined {
+  const data = asObj(asObj(json)?.data);
+  for (const key of ['viewer', 'viewer_v2']) {
+    const result = asObj(asObj(asObj(data?.[key])?.user_results)?.result);
+    const handle = result ? readGraphqlUser(result)?.handle ?? str(asObj(result.core)?.screen_name) : undefined;
+    if (handle) return handle;
+  }
+  if (/\/account\/settings\.json/.test(url)) return str(asObj(json)?.screen_name);
+  return undefined;
+}
+
 export function isDefaultAvatarUrl(url: string): boolean {
   return url.includes('/default_profile_images/');
 }

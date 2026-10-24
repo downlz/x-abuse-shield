@@ -1,5 +1,6 @@
 import { dispatchRecords } from '@/adapters/x-api/bridge';
 import { collectRecords } from '@/adapters/x-api/collect';
+import { readViewer } from '@/adapters/x-api/fields';
 import { installApiReader, operationName } from '@/adapters/x-api/reader';
 
 /**
@@ -13,8 +14,9 @@ export default defineContentScript({
   main() {
     installApiReader(globalThis, (url, json) => {
       const records = collectRecords(json);
-      if (records.users.length > 0 || records.posts.length > 0) {
-        dispatchRecords({ ...records, operation: operationName(url) });
+      const viewer = readViewer(url, json);
+      if (records.users.length > 0 || records.posts.length > 0 || viewer) {
+        dispatchRecords({ ...records, operation: operationName(url), viewer });
       }
     });
   },

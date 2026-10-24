@@ -14,14 +14,19 @@ export const MODEL_STATUS_KEY = 'modelStatus';
 /** Epoch ms of the last classify request, for the idle unload. */
 export const MODEL_LAST_USED_KEY = 'modelLastUsed';
 
-/** Approximate one-time download, shown before asking for approval. */
-export const MODEL_DOWNLOAD_MB = 289;
+/** Phones load the trimmed model when the build has it (adapters/inference/model-runtime.ts usesLiteModel). */
+const LITE = __LITE_MODEL__ && typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+const IN_PLACE = __BUNDLED_MODEL__ || !!__MODEL_URL__;
+
+/** Approximate one-time download, shown before asking for approval: model + tokenizer. */
+export const MODEL_DOWNLOAD_MB = LITE ? 90 : 289;
 
 /**
- * Memory while loaded, measured in Chrome (extension process, 60 s idle):
- * +507 MB for the in-place .ort model (shipped or hosted), +850 MB for the .onnx from Hugging Face.
+ * Memory while loaded, 60 s after scoring. In-place .ort model: Chrome +507 MB (extension process),
+ * Firefox +629 MB (all processes, single-threaded), phone model in Firefox +334 MB
+ * (scripts/memory-firefox.ts). The .onnx from Hugging Face: +850 MB in Chrome.
  */
-export const MODEL_MEMORY_MB = __BUNDLED_MODEL__ || __MODEL_URL__ ? 500 : 850;
+export const MODEL_MEMORY_MB = LITE ? 340 : !IN_PLACE ? 850 : import.meta.env.FIREFOX ? 630 : 500;
 
 /** Where this build's model comes from: shipped inside it, a hosted copy's URL, or the original on Hugging Face. */
 export const MODEL_SOURCE = __BUNDLED_MODEL__ ? 'bundled' : __MODEL_URL__ || 'huggingface';

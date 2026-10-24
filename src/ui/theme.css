@@ -100,6 +100,16 @@ label.check input { margin-top: 3px; }
 .segmented button { border: 0; border-radius: 0; padding: 6px 12px; background: transparent; }
 .segmented button[aria-pressed='true'] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
 
+/* Phones: finger-sized targets (about 40 px). */
+@media (pointer: coarse) {
+  button { min-height: 40px; padding: 8px 16px; }
+  .segmented button { min-height: 40px; padding: 8px 14px; }
+  label.check { padding: 4px 0; }
+  label.check input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+  input[type='number'] { min-height: 40px; }
+  input[type='range'] { min-height: 32px; }
+}
+
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
 th { font-weight: 600; color: var(--muted); font-size: 12px; }

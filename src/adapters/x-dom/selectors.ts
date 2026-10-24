@@ -23,9 +23,9 @@ export const X = {
   homeTabs: '[data-testid="primaryColumn"] [role="tablist"] [role="tab"]',
   /** The logged-in user's profile link in the side navigation: href="/<handle>". */
   ownProfileLink: 'a[data-testid="AppTabBar_Profile_Link"]',
-  /** The post's "More" (⋯) button, and the menu it opens in #layers. */
+  /** The post's "More" (⋯) button, and the menu it opens in #layers: a dropdown, or a bottom sheet in the phone layout. */
   postMenuButton: '[data-testid="caret"]',
-  postMenu: '#layers [data-testid="Dropdown"]',
+  postMenu: '#layers [data-testid="Dropdown"], #layers [data-testid="sheetDialog"]',
   menuItem: '[role="menuitem"]',
   /** "Block @handle"; "Mute @handle" sits right before it. A mute test id is used if X adds one. */
   blockMenuItem: '[data-testid="block"]',

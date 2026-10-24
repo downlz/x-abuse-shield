@@ -19,11 +19,14 @@
     "test:e2e": "wxt build && tsx scripts/e2e-smoke.ts",
     "test:e2e:firefox": "wxt build -b firefox && tsx scripts/e2e-smoke.ts --firefox",
     "test:e2e:hosted": "tsx scripts/e2e-smoke.ts --hosted",
+    "test:e2e:mobile": "wxt build -b firefox && tsx scripts/e2e-smoke.ts --mobile",
     "spike:reference": "tsx scripts/spike-reference.ts",
     "spike:browser": "wxt build && tsx scripts/spike-browser.ts",
     "spike:report": "tsx scripts/spike-report.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "model:build": "tsx scripts/build-model.ts",
+    "model:trim": "node scripts/trim/run.mjs",
+    "memory:firefox": "tsx scripts/memory-firefox.ts",
     "icons": "tsx scripts/build-icons.ts"
   },
   "dependencies": {

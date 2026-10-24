@@ -11,6 +11,8 @@ export const RECORDS_EVENT = 'xabuseshield:records';
 export interface RecordsPayload extends Records {
   /** GraphQL operation name, e.g. "HomeTimeline", or the REST path. */
   operation: string;
+  /** The logged-in user's handle, when this response says. */
+  viewer?: string;
 }
 
 export function dispatchRecords(payload: RecordsPayload, target: EventTarget = document): void {

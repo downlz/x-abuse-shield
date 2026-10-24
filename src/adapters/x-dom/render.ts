@@ -53,6 +53,13 @@ const CSS = `
   position: absolute; inset: 50% 16px auto; transform: translateY(-50%); z-index: 1; margin: 0;
   background: color-mix(in srgb, var(--xas-bg, Canvas) 85%, transparent); backdrop-filter: blur(2px);
 }
+@media (pointer: coarse) {
+  .${PLACEHOLDER_CLASS} { font-size: 15px; }
+  .${PLACEHOLDER_CLASS} .xas-buttons { gap: 8px; }
+  .${PLACEHOLDER_CLASS} button { min-height: 40px; padding: 6px 16px; font-size: 14px; }
+  /* On a narrow screen the buttons wrap, so a floating panel can outgrow a short post: put it above the post instead. */
+  [${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { position: static; transform: none; margin: 8px 12px; }
+}
 :not(article)[${ATTR}] > .${PLACEHOLDER_CLASS} { margin: 8px; padding: 6px 12px; }
 :not(article)[${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { inset: 50% 8px auto; }
 .${PLACEHOLDER_CLASS} > span { flex: 1 1 220px; min-width: 0; }

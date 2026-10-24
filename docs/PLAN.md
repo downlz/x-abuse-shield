@@ -308,7 +308,7 @@ x-abuse-shield/
 
 | Stage | Target | Work | Main risk |
 |---|---|---|---|
-| M1 | Firefox for Android | The desktop Firefox build (Phase 4: MV2, model in a background worker) on Android: test, responsive popup/options, AMO with the hosted model | Phone memory for a 300 MB model → lexicon-only fallback |
+| M1 | Firefox for Android — **in progress**, [ANDROID.md](ANDROID.md) | The desktop Firefox build on Android, adapted at run time (smaller batches, touch layouts, phone x.com layout), with a trimmed phone model; public AMO listing | Phone memory → trimmed model (English, Hindi, Hinglish, Urdu, Bengali) |
 | M2 | Safari iOS | WXT Safari target + `safari-web-extension-converter`; needs Mac + Apple developer account | iOS extension memory caps → lexicon-only, or native inference in the container app |
 | M3 (optional) | Android WebView app | Kotlin shell injecting `core/`; ONNX Runtime Mobile; sideloaded | Google sign-in blocked in WebViews; not Play-publishable |
 | Sync | All devices | Import/export first; later "Mute on X" (real mutes sync via X) | — |

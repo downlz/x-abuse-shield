@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { defineConfig } from 'wxt';
-import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, MODEL_ID } from './src/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, LITE_MODEL_ID, MODEL_ID } from './src/adapters/inference/model';
 import { ortInPlacePlugin } from './scripts/ort-in-place-plugin';
 
 /**
@@ -21,6 +21,13 @@ const ORT_SOURCE = resolve('node_modules/onnxruntime-web/dist/ort.webgpu.mjs');
 const BUNDLED_MODEL =
   process.env.WXT_BUNDLE_MODEL !== 'false' && existsSync(join('public', BUNDLED_MODEL_DIR, MODEL_ID, BUNDLED_MODEL_FILE));
 const MODEL_URL = BUNDLED_MODEL ? '' : (process.env.WXT_MODEL_URL ?? '').replace(/(?<=.)\/?$/, '/');
+/**
+ * Phones (Firefox for Android) load the trimmed model, LITE_MODEL_ID (`npm run model:trim`): bundled when
+ * public/models has it; hosted next to the full model (scripts/release.ts checks the host has both).
+ */
+const LITE_MODEL = BUNDLED_MODEL
+  ? existsSync(join('public', BUNDLED_MODEL_DIR, LITE_MODEL_ID, BUNDLED_MODEL_FILE))
+  : !!MODEL_URL && process.env.WXT_LITE_MODEL !== 'false';
 
 const CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
 
@@ -36,6 +43,7 @@ export default defineConfig({
     define: {
       __BUNDLED_MODEL__: JSON.stringify(BUNDLED_MODEL),
       __MODEL_URL__: JSON.stringify(MODEL_URL),
+      __LITE_MODEL__: JSON.stringify(LITE_MODEL),
     },
   }),
   zip: {
@@ -68,6 +76,8 @@ export default defineConfig({
             strict_min_version: '128.0',
             data_collection_permissions: { required: ['none'] },
           },
+          // The same build runs in Firefox for Android (docs/ANDROID.md); AMO lists it for Android only with this key.
+          gecko_android: { strict_min_version: '128.0' },
         },
       };
     }

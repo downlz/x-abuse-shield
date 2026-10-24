@@ -1,4 +1,9 @@
 body { width: 340px; }
+/* Firefox for Android shows the popup full screen. */
+@media (pointer: coarse) and (hover: none) {
+  body { width: auto; }
+  main { max-width: 480px; margin: 0 auto; }
+}
 main { padding: 16px; }
 .stat { font-size: 22px; font-weight: 700; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

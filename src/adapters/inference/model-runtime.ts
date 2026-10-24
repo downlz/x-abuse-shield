@@ -3,8 +3,8 @@
  * or hosted in-place .ort model, or the original .onnx from Hugging Face.
  * Runs in Chrome's offscreen document and in Firefox's model worker.
  */
-import { BUNDLED_MODEL_DIR, cachedModelFileCount, MODEL_FILE_COUNT } from './model';
-import { ModelService, type ServiceStatus } from './model-service';
+import { BUNDLED_MODEL_DIR, cachedModelFileCount, LITE_MODEL_ID, MODEL_FILE_COUNT, MODEL_ID } from './model';
+import { BATCH_SIZE, ModelService, PHONE_BATCH_SIZE, type ServiceStatus } from './model-service';
 import { hostedModelCached, loadInPlaceClassifier } from './ort-classifier';
 import { loadToxicityClassifier } from './toxicity-classifier';
 
@@ -27,8 +27,9 @@ export function createModelService(extensionUrl: string, report: (status: Servic
     if (__BUNDLED_MODEL__ || __MODEL_URL__) {
       const remote = !__BUNDLED_MODEL__;
       const modelBaseUrl = remote ? __MODEL_URL__ : new URL(`/${BUNDLED_MODEL_DIR}`, extensionUrl).href;
-      const downloading = remote && !(await hostedModelCached(modelBaseUrl));
-      return loadInPlaceClassifier({ modelBaseUrl, remote, ortBaseUrl, onProgress: progress(downloading) });
+      const modelId = usesLiteModel() ? LITE_MODEL_ID : MODEL_ID;
+      const downloading = remote && !(await hostedModelCached(modelBaseUrl, modelId));
+      return loadInPlaceClassifier({ modelBaseUrl, remote, ortBaseUrl, modelId, onProgress: progress(downloading) });
     }
 
     const downloading = (await cachedModelFileCount()) < MODEL_FILE_COUNT;
@@ -39,5 +40,15 @@ export function createModelService(extensionUrl: string, report: (status: Servic
         if (p.status === 'progress_total') onPercent(Math.floor(p.progress));
       },
     });
-  }, report);
+  }, report, isPhone() ? PHONE_BATCH_SIZE : BATCH_SIZE);
+}
+
+/** Firefox for Android (also readable inside the model worker, which has no extension APIs). */
+export function isPhone(): boolean {
+  return /Android/i.test(navigator.userAgent);
+}
+
+/** Phones run the trimmed model when this build has it (wxt.config.ts). */
+export function usesLiteModel(): boolean {
+  return __LITE_MODEL__ && isPhone();
 }

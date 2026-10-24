@@ -2,6 +2,11 @@ import type { CategoryScores } from '@/core/engine/categories';
 import type { ToxicityClassifier } from './toxicity-classifier';
 
 export const BATCH_SIZE = 8;
+/**
+ * Phones run the model on one slower core (Firefox for Android): smaller
+ * batches bring the first verdicts on screen sooner while scrolling.
+ */
+export const PHONE_BATCH_SIZE = 4;
 const CACHE_LIMIT = 5000;
 
 export type ServiceStatus =
@@ -29,6 +34,7 @@ export class ModelService {
   constructor(
     private readonly loader: (report: (status: ServiceStatus) => void) => Promise<ToxicityClassifier>,
     private readonly report: (status: ServiceStatus) => void,
+    private readonly batchSize = BATCH_SIZE,
   ) {}
 
   ensureLoaded(): Promise<ToxicityClassifier> {
@@ -75,7 +81,7 @@ export class ModelService {
     try {
       const classifier = await this.ensureLoaded();
       while (this.queue.length > 0) {
-        const batch = this.queue.splice(0, BATCH_SIZE);
+        const batch = this.queue.splice(0, this.batchSize);
         try {
           const scores = await classifier.classify(batch.map((job) => job.text));
           batch.forEach((job, i) => this.settle(job, (w) => w.resolve(scores[i]!), scores[i]));

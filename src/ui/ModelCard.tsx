@@ -18,6 +18,7 @@ export function useModelStatus(): ModelStatus | null {
 }
 
 const lowMemory = ((navigator as { deviceMemory?: number }).deviceMemory ?? 8) <= 4;
+const phone = /Android/i.test(navigator.userAgent);
 
 /** AI model status with the actions that make sense in each state. */
 export function ModelCard(props: {
@@ -59,6 +60,7 @@ export function ModelCard(props: {
             {props.compact ? '.' : `, and unloads after ${settings.model.idleMinutes} idle minutes.`}
           </p>
           {lowMemory && <p className="danger">This device reports 4 GB of memory or less — the model may slow it down.</p>}
+          {phone && !__BUNDLED_MODEL__ && <p className="muted">On a phone, use Wi-Fi for the download.</p>}
           <div className="row">
             <button type="button" className="primary" onClick={() => setModel({ downloadApproved: true, approvedSource: MODEL_SOURCE })}>
               {__BUNDLED_MODEL__ ? 'Turn on' : `Download (${MODEL_DOWNLOAD_MB} MB)`}

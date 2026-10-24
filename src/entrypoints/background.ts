@@ -33,6 +33,8 @@ import { approvalOutdated } from '@/shared/model-status';
 
 /** Below this, the ~500 MB model is off by default (word lists only). */
 const LOW_MEMORY_GB = 4;
+/** Default "unload after" on phones, instead of 5 minutes. */
+const PHONE_IDLE_MINUTES = 3;
 
 // Firefox (Manifest V2): a persistent background page, which owns the model's worker.
 export default defineBackground({ persistent: true, main });
@@ -49,11 +51,17 @@ function main() {
   // A post flagged in two tabs counts once in today's stats.
   const counted = new Set<string>();
 
+  // Firefox runs the model in a worker owned by this page, so a fresh page has no model loaded.
+  // Android kills idle extension processes and restarts this page when it's needed again.
+  if (import.meta.env.FIREFOX) void loadSettings().then((settings) => setModelStatus(restingStatus(settings)));
+
   browser.runtime.onInstalled.addListener(({ reason }) => {
     void serial(async () => {
       const settings = await loadSettings();
       const memory = (navigator as { deviceMemory?: number }).deviceMemory;
       if (reason === 'install' && memory !== undefined && memory <= LOW_MEMORY_GB) settings.model.enabled = false;
+      // Phones: give the model's memory back sooner (Firefox for Android).
+      if (reason === 'install' && (await browser.runtime.getPlatformInfo()).os === 'android') settings.model.idleMinutes = PHONE_IDLE_MINUTES;
       // Don't start a download the user never agreed to (e.g. updating from a build that shipped the model).
       if (approvalOutdated(settings.model)) settings.model.downloadApproved = false;
       // Writes defaults on first install and fills new keys after an update.
@@ -202,11 +210,16 @@ async function onMissed(text: string, directed: boolean, hinglish: boolean): Pro
 async function onHealth(tabId: number, health: TabHealth): Promise<void> {
   await browser.storage.session.set({ [healthKey(tabId)]: health });
   const broken = health.dom === 'broken';
-  // Manifest V2 (Firefox) calls the toolbar button browserAction.
+  // Manifest V2 (Firefox) calls the toolbar button browserAction. Firefox for Android has no toolbar
+  // button (the extension is in the menu), so the badge may be missing; the popup still shows health.
   const action = browser.action ?? browser.browserAction;
-  await action.setBadgeText({ tabId, text: broken ? '!' : '' });
-  if (broken) {
-    await action.setBadgeBackgroundColor({ tabId, color: '#d93025' });
-    await action.setTitle({ tabId, title: "X Abuse Shield can't read posts here — X may have changed its layout" });
+  try {
+    await action.setBadgeText({ tabId, text: broken ? '!' : '' });
+    if (broken) {
+      await action.setBadgeBackgroundColor({ tabId, color: '#d93025' });
+      await action.setTitle({ tabId, title: "X Abuse Shield can't read posts here — X may have changed its layout" });
+    }
+  } catch {
+    // No badge on this platform.
   }
 }

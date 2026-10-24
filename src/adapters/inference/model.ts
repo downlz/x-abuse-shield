@@ -1,5 +1,12 @@
 export const MODEL_ID = 'Horizon-Labs/multilingual-toxicity-small';
 
+/**
+ * The phone model (Firefox for Android): MODEL_ID with its vocabulary trimmed to English, Hindi,
+ * Hinglish, Urdu and Bengali (scripts/trim, `npm run model:trim`). Same folder layout as MODEL_ID's,
+ * under this path, bundled or hosted next to it.
+ */
+export const LITE_MODEL_ID = 'x-abuse-shield/multilingual-toxicity-lite';
+
 /** int8 weights: onnx/model_quantized.onnx (268 MB). */
 export const MODEL_DTYPE = 'q8';
 
