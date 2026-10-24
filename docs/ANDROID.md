@@ -76,7 +76,7 @@ Emulated results (`test:e2e:mobile`, desktop Firefox 158 as a phone): the full s
 ## Next steps
 
 1. **Real phone:** install Firefox Nightly, enable USB debugging, `web-ext run` the build; check memory (`about:memory` via remote debugging), scoring speed, and the inferred bits on live x.com: the phone layout's tab bar and ⋯ bottom sheet ("Mute on X"), quote cards, reposts.
-2. **Host the lite model** next to the full one on Hugging Face (`x-abuse-shield/multilingual-toxicity-lite/` in [downlz/x-abuse-shield-model](https://huggingface.co/downlz/x-abuse-shield-model)); `npm run release` refuses to build until it's there.
+2. ✅ **Lite model hosted** next to the full one: `x-abuse-shield/multilingual-toxicity-lite/` in [downlz/x-abuse-shield-model](https://huggingface.co/downlz/x-abuse-shield-model) (2026-10-24, commit `3834f9c`). Checked end to end: a hosted build in phone emulation downloaded it from Hugging Face in 19 s on a fresh profile and passed the suite (23/23).
 3. **Firefox Add-ons listing** (below).
 
 ## Publishing on Firefox Add-ons
