@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { collectRecords } from '@/adapters/x-api/collect';
+import { readViewer } from '@/adapters/x-api/fields';
 import { installApiReader, operationName } from '@/adapters/x-api/reader';
 import { loadJsonFixture as fixture } from '../helpers';
 
@@ -48,6 +49,14 @@ describe('collectRecords', () => {
     expect(user({}, { following: true })).toBe(true);
     expect(user({})).toBeUndefined();
     expect(collectRecords({ id_str: '2', screen_name: 'b', followers_count: 1, following: true }).users[0]?.youFollow).toBe(true);
+  });
+
+  it('finds the logged-in handle in the Viewer query and account settings (no sidebar link on phones)', () => {
+    expect(readViewer('https://x.com/i/api/graphql/x/Viewer', fixture('viewer.graphql.json'))).toBe('downlz');
+    expect(readViewer('https://x.com/i/api/1.1/account/settings.json', { screen_name: 'downlz', protected: false })).toBe('downlz');
+    // A user object elsewhere isn't the viewer.
+    expect(readViewer('https://x.com/i/api/1.1/users/show.json', { screen_name: 'someone', id_str: '1', followers_count: 3 })).toBeUndefined();
+    expect(readViewer('https://x.com/i/api/graphql/x/HomeTimeline', fixture('home-timeline.graphql.json'))).toBeUndefined();
   });
 
   it('reads the older shape with handle and date under legacy', () => {

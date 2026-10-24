@@ -1,0 +1,17 @@
+{
+  "_comment": "SYNTHETIC Viewer response (the logged-in account), in X's current GraphQL shape (Oct 2026).",
+  "data": {
+    "viewer": {
+      "user_results": {
+        "result": {
+          "__typename": "User",
+          "rest_id": "7001",
+          "is_blue_verified": false,
+          "core": { "screen_name": "downlz", "name": "Shahnawaz", "created_at": "Tue Jan 05 10:00:00 +0000 2010" },
+          "avatar": { "image_url": "https://pbs.twimg.com/profile_images/333/me_normal.jpg" },
+          "legacy": { "followers_count": 900, "friends_count": 400, "description": "" }
+        }
+      }
+    }
+  }
+}

@@ -417,6 +417,17 @@ describe('edge cases', () => {
     expect(card.textContent).toContain('quoted post · muted after repeated abuse');
   });
 
+  it('learns who you are from X’s data when the page has no profile link (phone layout)', () => {
+    document.querySelector(X.ownProfileLink)?.remove();
+    addPost('2001', '2009', 'Some bitch keeps replying to me');
+    document.querySelector('a[href$="/status/2009"]')!.closest(X.post)!.querySelectorAll('a[href="/priya_runs"]').forEach((a) => a.setAttribute('href', '/downlz'));
+    const { pipeline } = setup('/home');
+    pipeline.attach();
+    expect(treatments()['2009']).toBe('blur');
+    pipeline.addRecords({ users: [], posts: [], operation: 'Viewer', viewer: 'downlz' });
+    expect(treatments()['2009']).toBeNull();
+  });
+
   it('can leave accounts you follow alone (off by default)', () => {
     const records = homeRecords();
     records.users.find((u) => u.handle === 'Srihars47664037')!.youFollow = true;

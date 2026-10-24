@@ -17,3 +17,7 @@ calibration/posts.jsonl
 
 # Extension signing keys (keep them outside the repo)
 *.pem
+
+# Python environment for scripts/trim (vocabulary trimming)
+.venv-trim/
+__pycache__/

@@ -23,6 +23,8 @@ export interface InPlaceOptions {
   remote: boolean;
   /** Where ONNX Runtime's .mjs/.wasm are, e.g. `chrome-extension://<id>/ort/`. */
   ortBaseUrl: string;
+  /** MODEL_ID, or LITE_MODEL_ID on phones: the folder under modelBaseUrl. */
+  modelId?: string;
   /** 0–100 while reading or downloading the model file. */
   onProgress?: (percent: number) => void;
 }
@@ -43,11 +45,12 @@ export async function loadInPlaceClassifier(options: InPlaceOptions): Promise<To
     env.localModelPath = options.modelBaseUrl;
   }
 
-  const base = `${options.modelBaseUrl}${MODEL_ID}/`;
+  const modelId = options.modelId ?? MODEL_ID;
+  const base = `${options.modelBaseUrl}${modelId}/`;
   const read = (file: string, onProgress?: (percent: number) => void) =>
     options.remote ? readCached(`${base}${file}`, onProgress) : readBytes(`${base}${file}`, onProgress);
   const [tokenizer, config, session] = await Promise.all([
-    AutoTokenizer.from_pretrained(MODEL_ID),
+    AutoTokenizer.from_pretrained(modelId),
     read('config.json').then((bytes) => JSON.parse(new TextDecoder().decode(bytes)) as { id2label: Record<string, string> }),
     // The JS copy of the bytes is dropped once ONNX Runtime has them in WebAssembly memory.
     read(BUNDLED_MODEL_FILE, options.onProgress).then((bytes) => ort.InferenceSession.create(bytes, IN_PLACE_SESSION_OPTIONS)),
@@ -77,9 +80,9 @@ export async function loadInPlaceClassifier(options: InPlaceOptions): Promise<To
 }
 
 /** Whether a hosted model has already been downloaded. */
-export async function hostedModelCached(modelBaseUrl: string): Promise<boolean> {
+export async function hostedModelCached(modelBaseUrl: string, modelId = MODEL_ID): Promise<boolean> {
   const cache = await caches.open(IN_PLACE_CACHE);
-  return !!(await cache.match(`${modelBaseUrl}${MODEL_ID}/${BUNDLED_MODEL_FILE}`));
+  return !!(await cache.match(`${modelBaseUrl}${modelId}/${BUNDLED_MODEL_FILE}`));
 }
 
 function toOrt(tensor: Tensor): ort.Tensor {

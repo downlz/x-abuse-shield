@@ -52,15 +52,21 @@ export function App() {
       <TabStatus tab={tab} />
 
       <div className="row">
-        <button type="button" style={{ flex: 1 }} onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('/review.html') })}>
+        <button type="button" style={{ flex: 1 }} onClick={() => void openAndClose(browser.tabs.create({ url: browser.runtime.getURL('/review.html') }))}>
           Hidden posts
         </button>
-        <button type="button" style={{ flex: 1 }} onClick={() => void browser.runtime.openOptionsPage()}>
+        <button type="button" style={{ flex: 1 }} onClick={() => void openAndClose(browser.runtime.openOptionsPage())}>
           Settings
         </button>
       </div>
     </main>
   );
+}
+
+/** Firefox for Android shows the popup full screen over the page, so it would hide the page just opened. */
+async function openAndClose(opening: Promise<unknown>) {
+  await opening;
+  window.close();
 }
 
 function TabStatus({ tab }: { tab: { onX: boolean; health: TabHealth | null } }) {

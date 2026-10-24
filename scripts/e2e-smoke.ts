@@ -4,6 +4,7 @@
 //   npm run test:e2e            npm run test:e2e:firefox
 //   npm run test:e2e:hosted     npm run test:e2e:hosted -- --firefox
 //   npx tsx scripts/e2e-smoke.ts --firefox --extension=.output/release/x-abuse-shield-<version>.xpi
+//   npm run test:e2e:mobile     Firefox emulating a phone (docs/ANDROID.md)
 //
 // x.com is faked with request interception: each page boots like X does —
 // fetch the API data (via fetch() or XHR), then render the posts — using the
@@ -12,16 +13,23 @@
 import { execSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 const root = join(import.meta.dirname, '..');
-const firefox = process.argv.includes('--firefox');
+/**
+ * --mobile: Firefox emulating Firefox for Android on a phone — Android user agent, a touch-only pointer, a
+ * 412×915 window — on x.com's phone layout (no sidebar profile link; the account comes from X's Viewer query).
+ */
+const mobile = process.argv.includes('--mobile');
+const firefox = mobile || process.argv.includes('--firefox');
+const ANDROID_UA = 'Mozilla/5.0 (Android 15; Mobile; rv:158.0) Gecko/158.0 Firefox/158.0';
+const PHONE = { width: 412, height: 915 };
 /** --extension=<folder, or .xpi for Firefox>: test a release download instead of the build folder. */
 const extensionArg = process.argv.find((arg) => arg.startsWith('--extension='))?.slice('--extension='.length);
 const extensionPath = extensionArg ?? join(root, '.output', firefox ? 'firefox-mv2' : 'chrome-mv3');
 const profileDir = join(root, '.e2e-profile');
-const shotsDir = join(root, 'spike', 'results', firefox ? 'e2e-firefox' : 'e2e');
+const shotsDir = join(root, 'spike', 'results', mobile ? 'e2e-mobile' : firefox ? 'e2e-firefox' : 'e2e');
 /** Firefox gives each install a random moz-extension:// host; a pref pins it so the test can open extension pages. */
 const FIREFOX_UUID = '5b0d6c1e-3f2a-4c8e-9a71-0e4b2d9c6f13';
 /** The extension API as seen from an extension page (Firefox's chrome.* has no promises in Manifest V2). */
@@ -94,11 +102,15 @@ const FAKE_X_MENU = `
 function fakePage(fixture: string, api: { url: string; via: 'fetch' | 'xhr' }, extraArticles = ''): string {
   let html = readFileSync(join(fixtures, 'x', fixture), 'utf8');
   if (extraArticles) html = html.replace('</div></div></section>', `${extraArticles}</div></div></section>`);
+  // X's phone layout: no sidebar (so no profile link), a bottom tab bar instead.
+  if (mobile) html = html.replace(/<header>[\s\S]*?<\/header>/, '').replace('</main>', '</main><nav data-testid="BottomBar"><a href="/home" data-testid="AppTabBar_Home_Link">Home</a></nav>');
   html = html.replace('<main>', '<template id="app"><main>').replace('</main>', '</main></template>');
+  const viewer = mobile ? `await (await fetch(${JSON.stringify(API.viewer.url)})).json();` : '';
   const load =
-    api.via === 'fetch'
+    viewer +
+    (api.via === 'fetch'
       ? `await (await fetch(${JSON.stringify(api.url)})).json();`
-      : `await new Promise((resolve) => { const x = new XMLHttpRequest(); x.open('GET', ${JSON.stringify(api.url)}); x.onload = () => { JSON.parse(x.responseText); resolve(); }; x.send(); });`;
+      : `await new Promise((resolve) => { const x = new XMLHttpRequest(); x.open('GET', ${JSON.stringify(api.url)}); x.onload = () => { JSON.parse(x.responseText); resolve(); }; x.send(); });`);
   const script = `<script>
     setTimeout(async () => {
       ${load}
@@ -122,6 +134,7 @@ const API = {
   home: { url: '/i/api/graphql/aaa/HomeTimeline?variables=%7B%7D', file: 'home-timeline.graphql.json' },
   thread: { url: '/i/api/graphql/bbb/TweetDetail?variables=%7B%7D', file: 'tweet-detail.legacy-shape.json' },
   notifications: { url: '/i/api/2/notifications/mentions.json', file: 'notifications.rest.json' },
+  viewer: { url: '/i/api/graphql/ddd/Viewer?variables=%7B%7D', file: 'viewer.graphql.json' },
 };
 
 let pages: Record<string, string> = {};
@@ -179,8 +192,13 @@ const browser = firefox
       executablePath: process.env.FIREFOX_PATH ?? 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
       headless: true,
       // Lets WebDriver BiDi open moz-extension:// pages.
-      args: ['--remote-allow-system-access'],
-      extraPrefsFirefox: { 'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@local': FIREFOX_UUID }) },
+      args: ['--remote-allow-system-access', ...(mobile ? [`--width=${PHONE.width}`, `--height=${PHONE.height}`] : [])],
+      defaultViewport: mobile ? PHONE : undefined,
+      extraPrefsFirefox: {
+        'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@downlz.github.io': FIREFOX_UUID }),
+        // A phone: Android user agent everywhere (pages, extension pages, the model worker) and a touch-only pointer.
+        ...(mobile ? { 'general.useragent.override': ANDROID_UA, 'ui.primaryPointerCapabilities': 1, 'ui.allPointerCapabilities': 1 } : {}),
+      },
     })
   : await puppeteer.launch({ headless: true, pipe: true, enableExtensions: true, userDataDir: profileDir });
 try {
@@ -226,6 +244,16 @@ try {
   };
 
   const home = await visit(browser, '/home');
+  if (mobile) {
+    const button = await home.page.$eval('article[data-xas-post="2002"] [data-xas-act="show"]', (b) => b.getBoundingClientRect().height);
+    check('phone: placeholder buttons are finger-sized (≥ 40 px)', button >= 40, `${button} px`);
+    const inside = await home.page.$eval('article[data-xas-post="2002"]', (article) => {
+      const panel = article.querySelector('.xas-placeholder')!.getBoundingClientRect();
+      const post = article.getBoundingClientRect();
+      return { panelBottom: Math.round(panel.bottom), postBottom: Math.round(post.bottom) };
+    });
+    check('phone: the hidden-post panel stays inside its post (no overlap with the next one)', inside.panelBottom <= inside.postBottom, JSON.stringify(inside));
+  }
   check(
     'home: word-list abuse hidden before paint, others untouched; an abusive quoted post hidden inside a clean one',
     same(home.frame, { '2001': null, '2002': 'blur', '2003': null, '2004': null, ad: null, 'quote:1990': 'blur' }),
@@ -419,16 +447,26 @@ try {
   }
 
   // UI renders without errors.
-  for (const name of ['popup', 'options']) {
+  for (const name of mobile ? ['popup', 'options', 'review'] : ['popup', 'options']) {
     const ui = await browser.newPage();
     const errors: string[] = [];
     ui.on('pageerror', (e) => errors.push(String(e)));
     ui.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-    await ui.setViewport({ width: name === 'popup' ? 360 : 900, height: 900 });
+    await ui.setViewport(mobile ? PHONE : { width: name === 'popup' ? 360 : 900, height: 900 });
     await openExtensionPage(ui, `${name}.html`);
     await new Promise((resolve) => setTimeout(resolve, 800));
     if (!firefox) await ui.screenshot({ path: join(shotsDir, `${name}.png`), fullPage: true });
     check(`${name} page renders without errors`, errors.length === 0, errors.join(' | '));
+    if (mobile) {
+      const fit = (await ui.evaluate(
+        '({ width: innerWidth, scroll: document.documentElement.scrollWidth, body: document.body.getBoundingClientRect().width, coarse: matchMedia("(pointer: coarse)").matches, smallest: Math.min(...[...document.querySelectorAll("button")].map((b) => b.getBoundingClientRect().height).filter((h) => h > 0)) })',
+      )) as { width: number; scroll: number; body: number; coarse: boolean; smallest: number };
+      check(
+        `phone: ${name} page fills the screen without sideways scrolling, with finger-sized buttons`,
+        fit.coarse && fit.scroll <= fit.width && fit.body >= fit.width - 1 && fit.smallest >= 40,
+        JSON.stringify(fit),
+      );
+    }
   }
 } finally {
   await browser.close();
@@ -436,5 +474,5 @@ try {
 }
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots: spike/results/${firefox ? 'e2e-firefox' : 'e2e'}/`);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots: ${relative(root, shotsDir).replaceAll(sep, '/')}/`);
 process.exitCode = failed.length > 0 ? 1 : 0;

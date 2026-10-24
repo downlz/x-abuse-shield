@@ -20,7 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import puppeteer from 'puppeteer';
-import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, HOSTED_MODEL_URL, MODEL_ID } from '../src/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, HOSTED_MODEL_URL, LITE_MODEL_ID, MODEL_ID } from '../src/adapters/inference/model';
 
 const root = join(import.meta.dirname, '..');
 const output = join(root, '.output');
@@ -30,8 +30,11 @@ const keyPath = process.env.CRX_KEY ?? join(homedir(), '.x-abuse-shield', 'crx-k
 const bundled = process.argv.includes('--bundled');
 const modelUrl = process.env.WXT_MODEL_URL ?? HOSTED_MODEL_URL;
 const modelDir = join(root, 'public', BUNDLED_MODEL_DIR, MODEL_ID);
+// Hosted builds load the phone model from the same host (wxt.config.ts), so it must be built and hosted too.
+const liteDir = join(root, 'public', BUNDLED_MODEL_DIR, LITE_MODEL_ID);
 
 if (!existsSync(join(modelDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:build` first.');
+if (!existsSync(join(liteDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:trim` first: it builds the phone model.');
 if (!bundled) await checkHost();
 
 // wxt zip builds, then zips each browser's folder with manifest.json at the root.
@@ -90,15 +93,15 @@ for (const line of sums) console.log(`  ${line}`);
  */
 async function checkHost(): Promise<void> {
   if (!modelUrl.endsWith('/')) throw new Error(`The model URL must end with "/": ${modelUrl}`);
-  for (const file of readdirSync(modelDir)) {
-    const local = readFileSync(join(modelDir, file));
-    const url = `${modelUrl}${MODEL_ID}/${file}`;
+  for (const [id, dir] of [[MODEL_ID, modelDir], [LITE_MODEL_ID, liteDir]] as const) for (const file of readdirSync(dir)) {
+    const local = readFileSync(join(dir, file));
+    const url = `${modelUrl}${id}/${file}`;
     const response = await fetch(url, { headers: { origin: 'chrome-extension://release-check' } });
     if (!response.ok) throw new Error(`The model host doesn't serve ${file} (${response.status}): ${url}`);
     if (!response.headers.get('access-control-allow-origin')) throw new Error(`The model host doesn't allow browsers to fetch ${file} (no CORS header)`);
     const remote = Buffer.from(await response.arrayBuffer());
     const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
-    if (hash(remote) !== hash(local)) throw new Error(`${file} on the model host differs from public/models (${remote.length} vs ${statSync(join(modelDir, file)).size} bytes)`);
-    console.log(`Model host: ${file} matches`);
+    if (hash(remote) !== hash(local)) throw new Error(`${id}/${file} on the model host differs from public/models (${remote.length} vs ${statSync(join(dir, file)).size} bytes)`);
+    console.log(`Model host: ${id}/${file} matches`);
   }
 }

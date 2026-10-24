@@ -149,6 +149,12 @@ export class ContentPipeline {
   }
 
   addRecords(payload: RecordsPayload): void {
+    // Your own posts are never filtered; on X's phone layout this is how we learn who you are.
+    const viewer = payload.viewer?.toLowerCase();
+    if (viewer && viewer !== this.me) {
+      this.me = viewer;
+      this.processAll();
+    }
     const arrived = new Set<string>();
     for (const user of payload.users) {
       const handle = user.handle.toLowerCase();

@@ -112,6 +112,7 @@ Details and progress are in [docs/PLAN.md](docs/PLAN.md).
 ```sh
 npm install             # also copies ONNX Runtime's wasm into public/ort and generates WXT types
 npm run model:build     # downloads the model once, converts it to run in place → public/models (~300 MB)
+npm run model:trim      # the smaller phone model (Firefox for Android) → public/models; needs Python 3 (docs/ANDROID.md)
 npm run build           # Chrome / Brave → .output/chrome-mv3
 npm run build:firefox   # Firefox 128+   → .output/firefox-mv2
 ```
@@ -147,6 +148,7 @@ npm test                    # unit + fixture tests (Vitest, happy-dom)
 npm run test:e2e            # builds, then runs the extension in Chrome for Testing against fake x.com pages
 npm run test:e2e:firefox    # the same in your installed Firefox (FIREFOX_PATH to point elsewhere)
 npm run test:e2e:hosted     # builds without the model and serves it from a local "model host" (add -- --firefox)
+npm run test:e2e:mobile     # Firefox emulating a phone: Android user agent, touch, 412 px screen, the lite model
 npx tsx scripts/e2e-smoke.ts --idle   # also checks the idle unload (adds ~2 minutes; --firefox works too)
 ```
 
