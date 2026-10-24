@@ -12,7 +12,25 @@ Download the latest version from **[Releases](https://github.com/downlz/x-abuse-
 - **Firefox 128+:** `x-abuse-shield-<version>.xpi`. Open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** and choose the file. The file isn't signed by Mozilla, so regular Firefox removes it on quit; Developer Edition and Nightly can install it permanently with `xpinstall.signatures.required` set to `false`.
 - The `.crx` is for computers where a policy allows the extension: Chrome on Windows and macOS doesn't install `.crx` files from outside the Chrome Web Store.
 
-Each release page has the full instructions and SHA-256 checksums. The AI model is included, so nothing more is downloaded.
+Each release page has the full instructions and SHA-256 checksums. The downloads are about 7 MB: the AI model (289 MB) is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup. The word lists work without it.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td valign="top" width="50%">
+      <img src="docs/screenshots/hidden-post.png" alt="A post on x.com blurred by Abuse Shield, with the reason (toxic · model: toxicity 0.84 ≥ 0.75) and Show, Not abusive, Mute here and Mute on X buttons"><br>
+      <sub>A hidden post: why it was hidden, and what you can do about it.</sub>
+      <br><br>
+      <img src="docs/screenshots/popup.png" alt="The toolbar popup: sensitivity preset, 42 posts hidden today, AI model on, and the tab's status" width="360"><br>
+      <sub>The popup: sensitivity, today's counts, model status and whether the page can be read.</sub>
+    </td>
+    <td valign="top" width="50%">
+      <img src="docs/screenshots/settings.png" alt="The settings page: actions, AI model thresholds per category, where to filter, word lists, account checks, copy-paste replies, repeat offenders, muted accounts and backup"><br>
+      <sub>Settings. Every threshold and rule can be changed.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Goal
 
@@ -117,10 +135,10 @@ The word lists work straight away. To add the AI model, click **Turn on** in the
 | Build | Extension size | First use | Memory while loaded (measured in Chrome) |
 |---|---|---|---|
 | `model:build`, then build (default) | ~331 MB | Nothing to download | ~500 MB |
-| Hosted: `WXT_BUNDLE_MODEL=false WXT_MODEL_URL=https://…/` | ~28 MB | Downloads the converted model once (289 MB) | ~500 MB |
+| Hosted (releases): `WXT_BUNDLE_MODEL=false WXT_MODEL_URL=https://…/` | ~28 MB | Downloads the converted model once (289 MB) | ~500 MB |
 | Neither | ~28 MB | Downloads the original model from Hugging Face (289 MB) | ~850 MB |
 
-The browser can't do the conversion itself (ONNX Runtime's web build has no converter), so a small extension with the low-memory model needs the converted files hosted somewhere: upload the contents of `public/models/` (keeping its folder structure), for example to a Hugging Face repository, and point `WXT_MODEL_URL` at it — `https://huggingface.co/<you>/<repo>/resolve/main/`. Steps are in [docs/STORE.md](docs/STORE.md).
+The browser can't do the conversion itself (ONNX Runtime's web build has no converter), so a small extension with the low-memory model needs the converted files hosted somewhere. Releases use [downlz/x-abuse-shield-model](https://huggingface.co/downlz/x-abuse-shield-model) on Hugging Face (`HOSTED_MODEL_URL` in `src/adapters/inference/model.ts`): a copy of `public/models/` with its folder structure.
 
 ## Tests
 
@@ -138,8 +156,8 @@ The x.com fixtures in `tests/fixtures/` are synthetic, modelled on X's markup an
 
 ```sh
 npm version <x.y.z> --no-git-tag-version   # then commit and push
-npm run release                            # builds .output/release/: Chrome .zip and .crx, Firefox .xpi, SHA256SUMS.txt
-npx tsx scripts/e2e-smoke.ts --firefox --extension=.output/release/x-abuse-shield-<x.y.z>.xpi   # test a download
+npm run release                            # checks the model host, then builds .output/release/: Chrome .zip and .crx, Firefox .xpi, SHA256SUMS.txt
+npx tsx scripts/e2e-smoke.ts --firefox --extension=.output/release/x-abuse-shield-<x.y.z>.xpi   # test a download (fetches the real model)
 npm run release:publish -- --notes docs/releases/v<x.y.z>.md   # GitHub release tagged v<x.y.z> at the current commit
 ```
 

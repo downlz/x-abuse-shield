@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import { activeThresholds, migrateSettings } from '@/core/config/migrate';
 import { PRESETS } from '@/core/engine/presets';
+import { approvalOutdated } from '@/shared/model-status';
 
 describe('migrateSettings', () => {
   it('returns defaults for empty storage', () => {
@@ -33,5 +34,23 @@ describe('migrateSettings', () => {
     const settings = migrateSettings({ preset: 'custom', customThresholds: { obscene: null } });
     expect(activeThresholds(settings).obscene).toBeNull();
     expect(activeThresholds(settings).insult).toBe(PRESETS.balanced.insult);
+  });
+});
+
+describe('approvalOutdated', () => {
+  const hosted = 'https://huggingface.co/downlz/x-abuse-shield-model/resolve/main/';
+  const model = (downloadApproved: boolean, approvedSource: string) => ({ downloadApproved, approvedSource });
+
+  it('asks again when an update would download a model the user only turned on (0.2.0 shipped it)', () => {
+    // 0.2.0 saved no source; "Turn on" there downloaded nothing.
+    expect(approvalOutdated(model(true, ''), hosted)).toBe(true);
+    expect(approvalOutdated(model(true, 'bundled'), hosted)).toBe(true);
+    expect(approvalOutdated(model(true, hosted), 'huggingface')).toBe(true);
+  });
+
+  it('keeps an approval for the same source, any approval when nothing is downloaded, and no approval as is', () => {
+    expect(approvalOutdated(model(true, hosted), hosted)).toBe(false);
+    expect(approvalOutdated(model(true, ''), 'bundled')).toBe(false);
+    expect(approvalOutdated(model(false, ''), hosted)).toBe(false);
   });
 });

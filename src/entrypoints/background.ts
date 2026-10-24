@@ -29,6 +29,7 @@ import { addManualMute, normalizeHandle, recordStrike, unmute, withdrawStrike, t
 import { appendEntry, labelEntry, type ReviewEntry, type ReviewLabel } from '@/core/review/log';
 import { healthKey, type TabHealth } from '@/shared/health';
 import { isMessage, type Reply, type ScoreReply } from '@/shared/messages';
+import { approvalOutdated } from '@/shared/model-status';
 
 /** Below this, the ~500 MB model is off by default (word lists only). */
 const LOW_MEMORY_GB = 4;
@@ -53,6 +54,8 @@ function main() {
       const settings = await loadSettings();
       const memory = (navigator as { deviceMemory?: number }).deviceMemory;
       if (reason === 'install' && memory !== undefined && memory <= LOW_MEMORY_GB) settings.model.enabled = false;
+      // Don't start a download the user never agreed to (e.g. updating from a build that shipped the model).
+      if (approvalOutdated(settings.model)) settings.model.downloadApproved = false;
       // Writes defaults on first install and fills new keys after an update.
       await saveSettings(settings);
       await setModelStatus(restingStatus(settings));

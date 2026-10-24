@@ -22,3 +22,15 @@ export const MODEL_DOWNLOAD_MB = 289;
  * +507 MB for the in-place .ort model (shipped or hosted), +850 MB for the .onnx from Hugging Face.
  */
 export const MODEL_MEMORY_MB = __BUNDLED_MODEL__ || __MODEL_URL__ ? 500 : 850;
+
+/** Where this build's model comes from: shipped inside it, a hosted copy's URL, or the original on Hugging Face. */
+export const MODEL_SOURCE = __BUNDLED_MODEL__ ? 'bundled' : __MODEL_URL__ || 'huggingface';
+
+/**
+ * The user's "Turn on" or "Download" covers one model source. After an update
+ * that would download a model they haven't agreed to download (e.g. 0.2.0
+ * shipped it, 0.2.1 downloads it), they're asked again.
+ */
+export function approvalOutdated(model: { downloadApproved: boolean; approvedSource: string }, source: string = MODEL_SOURCE): boolean {
+  return model.downloadApproved && source !== 'bundled' && model.approvedSource !== source;
+}

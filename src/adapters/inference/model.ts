@@ -15,6 +15,12 @@ export const BUNDLED_MODEL_FILE = 'model.ort';
 export const BUNDLED_MODEL_DIR = 'models/';
 
 /**
+ * A public copy of public/models that release builds download on first use
+ * (scripts/release.ts), so the extension itself stays small.
+ */
+export const HOSTED_MODEL_URL = 'https://huggingface.co/downlz/x-abuse-shield-model/resolve/main/';
+
+/**
  * Run the weights straight from the .ort bytes (no second copy) and don't
  * keep re-laid-out copies for matrix multiplies (no pre-packing). Measured on
  * the WebAssembly runtime in Node: +294 MB vs +657 MB for the .onnx; scores

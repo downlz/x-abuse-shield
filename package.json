@@ -1,6 +1,6 @@
 {
   "name": "x-abuse-shield",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "On-device multilingual abuse filter for x.com",
   "license": "MIT",
