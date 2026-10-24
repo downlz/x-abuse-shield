@@ -49,7 +49,7 @@ export default defineConfig({
   zip: {
     // The sources zip (for AMO review) is rebuilt with `npm install` and `npm run model:build`. Like .gitignore,
     // it leaves out generated files and local-only data: real X screenshots, your labelled posts, test results.
-    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl'],
+    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl', '**/__pycache__/**'],
   },
   hooks: {
     'build:publicAssets': (_wxt, files) => {
@@ -72,7 +72,7 @@ export default defineConfig({
         content_security_policy: CSP,
         browser_specific_settings: {
           gecko: {
-            id: 'x-abuse-shield@local',
+            id: 'x-abuse-shield@downlz.github.io',
             strict_min_version: '128.0',
             data_collection_permissions: { required: ['none'] },
           },

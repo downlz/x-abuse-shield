@@ -60,7 +60,7 @@ for (const variant of variants) {
     headless: true,
     args: ['--remote-allow-system-access'],
     extraPrefsFirefox: {
-      'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@local': UUID }),
+      'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@downlz.github.io': UUID }),
       ...(phone ? { 'general.useragent.override': 'Mozilla/5.0 (Android 15; Mobile; rv:158.0) Gecko/158.0 Firefox/158.0' } : {}),
     },
   });

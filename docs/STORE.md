@@ -1,6 +1,6 @@
 # Store submission kit
 
-> **Not in use.** Because of Chrome Web Store policy, the extension isn't published in the stores; it's distributed as GitHub releases (README → Install, `npm run release`). This kit is kept for reference, and section 6 still applies if you want Mozilla to sign the Firefox add-on as an unlisted (self-distributed) add-on, so that regular Firefox keeps it installed.
+> **Chrome Web Store: not used** (store policy); Chrome and Brave users install from GitHub releases. **Firefox Add-ons: from 0.2.5**, one listing for Firefox desktop and Firefox for Android — section 6.
 
 Everything needed to publish on the Chrome Web Store and Firefox Add-ons (AMO). Personal use doesn't need any of it: load the unpacked build instead (README).
 
@@ -82,10 +82,21 @@ Bump `version` in `package.json` for every upload.
 
 ## 6. Firefox Add-ons (AMO)
 
-- Upload `…-firefox.zip`, and `…-sources.zip` when asked for source code (the build is minified). Build instructions for reviewers: `npm install`, then the build command from step 3.
-- The manifest already declares `data_collection_permissions: none` and the add-on id `x-abuse-shield@local`. **Change the id** to one you own before the first upload (e.g. `abuse-shield@<your domain>`), in `wxt.config.ts`; it can't change afterwards.
-- Firefox 128 or later is required (content scripts in the page's own JavaScript world).
-- For personal use without a public listing, choose **On your own** (unlisted): AMO signs the file and you install the `.xpi` yourself.
+- **Upload** `.output/release/x-abuse-shield-<version>.xpi` (from `npm run release`) and, when asked for source code (the build is minified), `.output/x-abuse-shield-<version>-sources.zip`.
+- **Compatibility:** tick both **Firefox** and **Firefox for Android**. The manifest declares `gecko` and `gecko_android`, both Firefox 128 or later (content scripts in the page's own JavaScript world).
+- **Add-on id:** `x-abuse-shield@downlz.github.io` (chosen 2026-10-24, in `wxt.config.ts`). AMO ties the listing to it: never change it.
+- **Data collection:** the manifest declares `data_collection_permissions: none`. The only network request is the model download from Hugging Face, which sends no user data.
+- **Build instructions for reviewers** (paste into "Notes to reviewer"):
+
+  ```
+  Node 22, npm. In the source folder:
+    npm install
+    WXT_BUNDLE_MODEL=false WXT_MODEL_URL=https://huggingface.co/downlz/x-abuse-shield-model/resolve/main/ npx wxt zip -b firefox
+  Output: .output/x-abuse-shield-<version>-firefox.zip (same contents as the uploaded .xpi).
+  public/ort/*.wasm is ONNX Runtime Web, copied from node_modules/onnxruntime-web by npm install (scripts/copy-ort.mjs).
+  The AI model is data, downloaded on first use from https://huggingface.co/downlz/x-abuse-shield-model (Apache-2.0).
+  ```
+- **Updates:** bump the version, `npm run release`, upload the new `.xpi`. Firefox updates installed copies automatically.
 
 ## 7. After publishing
 

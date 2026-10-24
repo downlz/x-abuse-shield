@@ -81,4 +81,4 @@ Emulated results (`test:e2e:mobile`, desktop Firefox 158 as a phone): the full s
 
 ## Publishing on Firefox Add-ons
 
-Needed from you before the first upload: a Firefox Add-ons account, and an add-on id you'll keep forever (replacing `x-abuse-shield@local`, e.g. `abuse-shield@<your domain>`). The listing text, privacy policy and permission notes are in [STORE.md](STORE.md) and [PRIVACY.md](PRIVACY.md). The hosted-model build is far under AMO's 200 MB limit.
+From 0.2.5, one listing covers Firefox desktop and Firefox for Android; the add-on id is `x-abuse-shield@downlz.github.io` (permanent). Upload steps, reviewer notes, listing text, privacy policy and permission notes: [STORE.md](STORE.md) section 6 and [PRIVACY.md](PRIVACY.md). The hosted-model build (~7 MB) is far under AMO's 200 MB limit.

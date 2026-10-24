@@ -195,7 +195,7 @@ const browser = firefox
       args: ['--remote-allow-system-access', ...(mobile ? [`--width=${PHONE.width}`, `--height=${PHONE.height}`] : [])],
       defaultViewport: mobile ? PHONE : undefined,
       extraPrefsFirefox: {
-        'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@local': FIREFOX_UUID }),
+        'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@downlz.github.io': FIREFOX_UUID }),
         // A phone: Android user agent everywhere (pages, extension pages, the model worker) and a touch-only pointer.
         ...(mobile ? { 'general.useragent.override': ANDROID_UA, 'ui.primaryPointerCapabilities': 1, 'ui.allPointerCapabilities': 1 } : {}),
       },
