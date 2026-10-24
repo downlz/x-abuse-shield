@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Settings } from '@/core/config/schema';
 import type { Message } from '@/shared/messages';
-import { MODEL_DOWNLOAD_MB, MODEL_MEMORY_MB, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
+import { MODEL_DOWNLOAD_MB, MODEL_MEMORY_MB, MODEL_SOURCE, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
 
 export function useModelStatus(): ModelStatus | null {
   const [status, setStatus] = useState<ModelStatus | null>(null);
@@ -60,7 +60,7 @@ export function ModelCard(props: {
           </p>
           {lowMemory && <p className="danger">This device reports 4 GB of memory or less — the model may slow it down.</p>}
           <div className="row">
-            <button type="button" className="primary" onClick={() => setModel({ downloadApproved: true })}>
+            <button type="button" className="primary" onClick={() => setModel({ downloadApproved: true, approvedSource: MODEL_SOURCE })}>
               {__BUNDLED_MODEL__ ? 'Turn on' : `Download (${MODEL_DOWNLOAD_MB} MB)`}
             </button>
             {!props.compact && (

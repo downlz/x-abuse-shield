@@ -68,6 +68,8 @@ export interface Settings {
     enabled: boolean;
     /** The user agreed to the one-time model download (~289 MB). */
     downloadApproved: boolean;
+    /** Which model source that approval was for (MODEL_SOURCE): an update that changes it asks again. */
+    approvedSource: string;
     /** Unload the model after this many idle minutes, freeing ~850 MB. */
     idleMinutes: number;
     /** Blur posts until the model has scored them, so nothing flashes. */

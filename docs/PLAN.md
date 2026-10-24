@@ -28,7 +28,7 @@ Status: **v0.2.0 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.0.md
 | 1 | Muting | Local mute list + auto-mute after strikes. User-clicked "Mute on X" button in Phase 3. No X API automation |
 | 2 | Default action | Blur with click-to-reveal; collapse for threats and severe toxicity |
 | 3 | Cloud LLM tier | Out of scope. Only network call is the one-time model download |
-| 4 | Distribution | GitHub releases: Chrome/Brave `.zip` (Load unpacked), signed `.crx`, unsigned Firefox `.xpi`, model included (`npm run release`). Not in the browser stores (Chrome Web Store policy); STORE.md kept for reference |
+| 4 | Distribution | GitHub releases: Chrome/Brave `.zip` (Load unpacked), signed `.crx`, unsigned Firefox `.xpi` (`npm run release`). Since 0.2.1 the model is downloaded on first use from [downlz/x-abuse-shield-model](https://huggingface.co/downlz/x-abuse-shield-model) (~7 MB downloads instead of ~240 MB); an approval covers one model source, so updating from a build that shipped the model asks before downloading. Not in the browser stores (Chrome Web Store policy); STORE.md kept for reference |
 | 5 | Languages | Model's 34 + built-in word lists for English, Hindi (Devanagari), Hinglish |
 | 6 | Stack | TypeScript, WXT, React (popup/options), Vitest |
 | 7 | Account data source | Read the user records in X's own API responses as the page loads them (passive, no extra requests). DOM-only fallback (avatar URL, handle) when a record is missing |
