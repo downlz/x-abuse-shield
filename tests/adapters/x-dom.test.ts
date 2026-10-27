@@ -161,6 +161,33 @@ describe('render', () => {
     expect(xSawIt).toBe(false);
   });
 
+  it('gives every button an icon and a name (phones show only the icon), and a short label for phones', () => {
+    const article = articles()[1]!;
+    render(article, '2002', { action: 'blur', label: 'Hidden by Abuse Shield', short: 'Hidden', detail: 'insult', actions: ['not-abusive', 'mute', 'mute-on-x'] }, false);
+    const buttons = [...article.querySelectorAll('[data-xas-act]')];
+    expect(buttons.map((b) => [b.querySelector('svg') !== null, b.getAttribute('title')])).toEqual([
+      [true, 'Show'],
+      [true, 'Not abusive'],
+      [true, 'Mute here'],
+      [true, 'Mute on X'],
+    ]);
+    expect(article.querySelector('.xas-short')?.textContent).toBe('Hidden');
+  });
+
+  it('opens the whole reason when it is tapped, without letting X open the post', () => {
+    const article = articles()[1]!;
+    render(article, '2002', { action: 'blur', label: 'x', detail: 'insult · word list + model toxicity 0.67', actions: [] }, false);
+    let xSawIt = false;
+    article.addEventListener('click', () => (xSawIt = true));
+    onPlaceholderAction(() => undefined);
+    const reason = article.querySelector<HTMLElement>('.xas-placeholder small')!;
+    reason.click();
+    expect(article.querySelector('.xas-placeholder')!.hasAttribute('data-xas-open')).toBe(true);
+    reason.click();
+    expect(article.querySelector('.xas-placeholder')!.hasAttribute('data-xas-open')).toBe(false);
+    expect(xSawIt).toBe(false);
+  });
+
   it('hides just a quote card, which collapses instead of removing the row', () => {
     const article = articles()[2]!;
     const card = quoteCard(article)!;

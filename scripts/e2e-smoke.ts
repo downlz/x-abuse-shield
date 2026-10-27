@@ -253,6 +253,11 @@ try {
       return { panelBottom: Math.round(panel.bottom), postBottom: Math.round(post.bottom) };
     });
     check('phone: the hidden-post panel stays inside its post (no overlap with the next one)', inside.panelBottom <= inside.postBottom, JSON.stringify(inside));
+    const line = await home.page.$eval('article[data-xas-post="2002"] .xas-placeholder', (panel) => {
+      const tops = [...panel.querySelectorAll('[data-xas-act]')].map((b) => Math.round(b.getBoundingClientRect().top));
+      return { height: Math.round(panel.getBoundingClientRect().height), rows: new Set(tops).size, buttons: tops.length };
+    });
+    check('phone: the panel is one line of icon buttons', line.rows === 1 && line.buttons === 4 && line.height <= 56, JSON.stringify(line));
   }
   check(
     'home: word-list abuse hidden before paint, others untouched; an abusive quoted post hidden inside a clean one',

@@ -4,15 +4,20 @@ On-device, multilingual abuse filter for x.com. Scores posts with
 [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
 via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
 
+[![Get it on Firefox Add-ons](https://img.shields.io/amo/v/x-abuse-shield?logo=firefoxbrowser&logoColor=white&label=Firefox%20Add-ons&color=FF7139&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)
+[![Latest release](https://img.shields.io/github/v/release/downlz/x-abuse-shield?label=Chrome%20%2F%20Brave&logo=googlechrome&logoColor=white&style=for-the-badge)](https://github.com/downlz/x-abuse-shield/releases/latest)
+
 ## Install
 
-Download the latest version from **[Releases](https://github.com/downlz/x-abuse-shield/releases/latest)**:
+**Firefox, desktop and Android:** install from **[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**. It's signed by Mozilla, stays installed and updates itself. On Android, open the link in Firefox for Android.
+
+**Chrome or Brave:** download the latest version from **[Releases](https://github.com/downlz/x-abuse-shield/releases/latest)**:
 
 - **Chrome or Brave:** `x-abuse-shield-<version>-chrome.zip`. Unzip it into a folder you'll keep, open `chrome://extensions` (or `brave://extensions`), switch on **Developer mode**, click **Load unpacked** and choose that folder.
-- **Firefox 128+:** `x-abuse-shield-<version>.xpi`. Open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** and choose the file. The file isn't signed by Mozilla, so regular Firefox removes it on quit; Developer Edition and Nightly can install it permanently with `xpinstall.signatures.required` set to `false`.
+- **Firefox without Add-ons** (e.g. testing a build): `x-abuse-shield-<version>.xpi` from the release, via `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…**. It's removed when Firefox quits; the Add-ons version is the one to keep.
 - The `.crx` is for computers where a policy allows the extension: Chrome on Windows and macOS doesn't install `.crx` files from outside the Chrome Web Store.
 
-Each release page has the full instructions and SHA-256 checksums. The downloads are about 7 MB: the AI model (289 MB) is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup. The word lists work without it.
+Each release page has the full instructions and SHA-256 checksums. The extension is about 7 MB: the AI model is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup — 289 MB on a computer, 93 MB on a phone (a lighter model for English, Hindi, Hinglish, Urdu and Bengali). The word lists work without it.
 
 ## Screenshots
 
@@ -96,10 +101,14 @@ Why that matters:
 
 What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import block lists. Block-list tools remain the right choice for that, and they work alongside this extension.
 
+## Delivered recently
+
+- ✅ **Firefox for Android** (0.2.5): the same Firefox add-on on phones, with touch-sized controls, compact one-line hidden-post panels (0.2.6) and x.com's phone layout. [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/).
+- ✅ **A smaller, lighter model for phones** (0.2.5): the vocabulary trimmed to English, Hindi, Hinglish, Urdu and Bengali and the layers stored as 8-bit integers — a 93 MB download instead of 289 MB and about 330 MB of memory instead of about 630 MB. Scores in those five languages change for 0.5–1.8% of posts.
+
 ## Planned features
 
-- **A smaller, lighter model.** Trimming the model's vocabulary to the languages we need should cut memory while loaded from ~500 MB to ~200–300 MB and the shipped model from 289 MB to ~60–90 MB, with accuracy checked against the calibration set before switching.
-- **Firefox for Android.** The desktop Firefox build on phones, with a responsive popup and settings, falling back to word lists only where memory is tight.
+- **The lighter model on desktop too**, as an option for computers with less memory.
 - **Safari on iPhone and iPad.** A Safari build of the extension, with word lists only or the model running in the companion app if iOS memory limits are too tight.
 - **Edge and Opera.** Builds tested on both browsers.
 - **Mutes across devices.** Import/export works today; later, "Mute on X" so mutes sync through X itself.

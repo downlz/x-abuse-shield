@@ -18,6 +18,9 @@ export const MODEL_LAST_USED_KEY = 'modelLastUsed';
 const LITE = __LITE_MODEL__ && typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 const IN_PLACE = __BUNDLED_MODEL__ || !!__MODEL_URL__;
 
+/** What the model covers, for the model card. */
+export const MODEL_LANGUAGES = LITE ? 'English, Hindi, Hinglish, Urdu and Bengali' : '34 languages';
+
 /** Approximate one-time download, shown before asking for approval: model + tokenizer. */
 export const MODEL_DOWNLOAD_MB = LITE ? 90 : 289;
 

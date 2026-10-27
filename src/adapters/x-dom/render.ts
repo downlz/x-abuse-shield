@@ -9,6 +9,8 @@ export interface Treatment {
   action: Action;
   /** "Hidden by Abuse Shield" or "Muted @handle". */
   label: string;
+  /** For the one-line panel on phones, e.g. "Hidden"; defaults to `label`. */
+  short?: string;
   /** Short reason, e.g. "insult · word list". */
   detail: string;
   actions: PlaceholderAction[];
@@ -30,6 +32,21 @@ const HANDLE = 'data-xas-handle';
 const CELL = 'data-xas-cell';
 export const PLACEHOLDER_CLASS = 'xas-placeholder';
 const ACTION_ATTR = 'data-xas-act';
+/** Set on a phone panel whose reason was tapped open. */
+const OPEN = 'data-xas-open';
+
+type Shape = ['path', string] | ['circle', number, number, number];
+/** Icons for the phone panel (24×24, stroked, after Feather icons, MIT). */
+const ICONS: Record<ClickedAction, Shape[]> = {
+  show: [['path', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'], ['circle', 12, 12, 3]],
+  'not-abusive': [['path', 'M20 6 9 17l-5-5']],
+  // A person with a minus: muted in this browser.
+  mute: [['path', 'M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'], ['circle', 8.5, 7, 4], ['path', 'M23 11h-6']],
+  // A silenced speaker, plus an "X" (CSS) for X's own mute.
+  'mute-on-x': [['path', 'M11 5 6 9H2v6h4l5 4V5z'], ['path', 'M23 9l-6 6M17 9l6 6']],
+  unmute: [['path', 'M11 5 6 9H2v6h4l5 4V5z'], ['path', 'M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07']],
+};
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const STYLE_ID = 'xabuseshield-style';
 const THEME_ID = 'xabuseshield-theme';
@@ -53,13 +70,6 @@ const CSS = `
   position: absolute; inset: 50% 16px auto; transform: translateY(-50%); z-index: 1; margin: 0;
   background: color-mix(in srgb, var(--xas-bg, Canvas) 85%, transparent); backdrop-filter: blur(2px);
 }
-@media (pointer: coarse) {
-  .${PLACEHOLDER_CLASS} { font-size: 15px; }
-  .${PLACEHOLDER_CLASS} .xas-buttons { gap: 8px; }
-  .${PLACEHOLDER_CLASS} button { min-height: 40px; padding: 6px 16px; font-size: 14px; }
-  /* On a narrow screen the buttons wrap, so a floating panel can outgrow a short post: put it above the post instead. */
-  [${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { position: static; transform: none; margin: 8px 12px; }
-}
 :not(article)[${ATTR}] > .${PLACEHOLDER_CLASS} { margin: 8px; padding: 6px 12px; }
 :not(article)[${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { inset: 50% 8px auto; }
 .${PLACEHOLDER_CLASS} > span { flex: 1 1 220px; min-width: 0; }
@@ -70,6 +80,30 @@ const CSS = `
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit;
 }
 .${PLACEHOLDER_CLASS} button[${ACTION_ATTR}="show"] { font-weight: 600; }
+.${PLACEHOLDER_CLASS} .xas-short, .${PLACEHOLDER_CLASS} button svg { display: none; }
+/* Phones: one line — a short reason that truncates (tap it for the whole reason) and icon buttons. */
+@media (pointer: coarse) {
+  .${PLACEHOLDER_CLASS} { flex-wrap: nowrap; gap: 8px; padding: 4px 4px 4px 12px; font-size: 14px; }
+  [${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { inset: 50% 12px auto; }
+  .${PLACEHOLDER_CLASS} > span { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .${PLACEHOLDER_CLASS}[${OPEN}] { flex-wrap: wrap; }
+  .${PLACEHOLDER_CLASS}[${OPEN}] > span { flex-basis: 100%; white-space: normal; padding: 6px 0 2px; }
+  .${PLACEHOLDER_CLASS} .xas-long { display: none; }
+  .${PLACEHOLDER_CLASS} .xas-short { display: inline; }
+  .${PLACEHOLDER_CLASS} small { display: inline; }
+  .${PLACEHOLDER_CLASS} small::before { content: ' · '; }
+  .${PLACEHOLDER_CLASS} .xas-buttons { flex: none; flex-wrap: nowrap; gap: 4px; margin-left: auto; }
+  .${PLACEHOLDER_CLASS} button {
+    position: relative; width: 40px; height: 40px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 1px;
+  }
+  .${PLACEHOLDER_CLASS} button svg { display: block; flex: none; }
+  .${PLACEHOLDER_CLASS} button .xas-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .${PLACEHOLDER_CLASS} button[${ACTION_ATTR}="mute-on-x"] { width: auto; padding: 0 10px; }
+  .${PLACEHOLDER_CLASS} button[${ACTION_ATTR}="mute-on-x"]::after { content: 'X'; font-weight: 700; font-size: 13px; }
+}
 `;
 
 export function injectStyles(doc: Document = document): void {
@@ -145,15 +179,22 @@ export function render(target: Element, postId: string, treatment: Treatment | n
     const text = doc.createElement('span');
     // Matched words may be in a right-to-left script, or the page may be.
     text.dir = 'auto';
-    text.append(doc.createElement('strong'), doc.createElement('small'));
+    const long = doc.createElement('strong');
+    long.className = 'xas-long';
+    const short = doc.createElement('strong');
+    short.className = 'xas-short';
+    text.append(long, short, doc.createElement('small'));
     const buttons = doc.createElement('div');
     buttons.className = 'xas-buttons';
     placeholder.append(text, buttons);
     target.prepend(placeholder);
   }
-  const strong = placeholder.querySelector('strong')!;
+  const long = placeholder.querySelector('.xas-long')!;
+  const short = placeholder.querySelector('.xas-short')!;
   const small = placeholder.querySelector('small')!;
-  if (strong.textContent !== treatment.label) strong.textContent = treatment.label;
+  const shortLabel = treatment.short ?? treatment.label;
+  if (long.textContent !== treatment.label) long.textContent = treatment.label;
+  if (short.textContent !== shortLabel) short.textContent = shortLabel;
   if (small.textContent !== treatment.detail) small.textContent = treatment.detail;
 
   const buttons = placeholder.querySelector('.xas-buttons')!;
@@ -162,10 +203,15 @@ export function render(target: Element, postId: string, treatment: Treatment | n
     buttons.setAttribute('data-actions', wanted.join(' '));
     buttons.replaceChildren(
       ...wanted.map((act) => {
+        const name = act === 'show' ? 'Show' : ACTION_LABELS[act];
         const button = doc.createElement('button');
         button.type = 'button';
         button.setAttribute(ACTION_ATTR, act);
-        button.textContent = act === 'show' ? 'Show' : ACTION_LABELS[act];
+        button.title = name;
+        const label = doc.createElement('span');
+        label.className = 'xas-label';
+        label.textContent = name;
+        button.append(icon(doc, act), label);
         return button;
       }),
     );
@@ -184,7 +230,16 @@ export function onPlaceholderAction(
   doc.addEventListener(
     'click',
     (event) => {
-      const button = (event.target as Element | null)?.closest?.(`[${ACTION_ATTR}]`);
+      const clicked = event.target as Element | null;
+      // Tapping the reason shows all of it (phones truncate it); either way it mustn't open the post.
+      const reason = clicked?.closest?.(`.${PLACEHOLDER_CLASS} > span`);
+      if (reason) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        reason.parentElement!.toggleAttribute(OPEN);
+        return;
+      }
+      const button = clicked?.closest?.(`[${ACTION_ATTR}]`);
       const target = button?.closest(`[${POST}]`);
       if (!button || !target) return;
       event.preventDefault();
@@ -198,6 +253,21 @@ export function onPlaceholderAction(
 
 export function isOwnNode(node: Node): boolean {
   return node.nodeType === 1 && (node as Element).classList.contains(PLACEHOLDER_CLASS);
+}
+
+function icon(doc: Document, act: ClickedAction): SVGSVGElement {
+  const svg = doc.createElementNS(SVG_NS, 'svg');
+  for (const [name, value] of Object.entries({
+    viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor',
+    'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
+  })) svg.setAttribute(name, value);
+  for (const shape of ICONS[act]) {
+    const el = doc.createElementNS(SVG_NS, shape[0]);
+    if (shape[0] === 'path') el.setAttribute('d', shape[1]);
+    else ['cx', 'cy', 'r'].forEach((attr, i) => el.setAttribute(attr, String(shape[i + 1])));
+    svg.append(el);
+  }
+  return svg;
 }
 
 function setAttr(el: Element, name: string, value: string) {

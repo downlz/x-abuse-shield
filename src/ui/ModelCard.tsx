@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Settings } from '@/core/config/schema';
 import type { Message } from '@/shared/messages';
-import { MODEL_DOWNLOAD_MB, MODEL_MEMORY_MB, MODEL_SOURCE, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
+import { MODEL_DOWNLOAD_MB, MODEL_LANGUAGES, MODEL_MEMORY_MB, MODEL_SOURCE, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
 
 export function useModelStatus(): ModelStatus | null {
   const [status, setStatus] = useState<ModelStatus | null>(null);
@@ -54,7 +54,7 @@ export function ModelCard(props: {
       {state === 'needs-download' && (
         <>
           <p className="muted">
-            Catches insults without swear words, veiled threats and abuse in 34 languages, on your device.{' '}
+            Catches insults without swear words, veiled threats and abuse in {MODEL_LANGUAGES}, on your device.{' '}
             {__BUNDLED_MODEL__ ? 'Included with the extension; ' : `One-time download of ${MODEL_DOWNLOAD_MB} MB; `}
             uses about {MODEL_MEMORY_MB} MB of memory while x.com is open
             {props.compact ? '.' : `, and unloads after ${settings.model.idleMinutes} idle minutes.`}

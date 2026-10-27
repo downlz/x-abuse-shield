@@ -4,7 +4,17 @@ Multilingual, on-device abuse filter for x.com. Chrome and Firefox extensions fi
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **v0.2.5 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.5.md)): Firefox for Android support (one Firefox add-on for desktop and phones, [ANDROID.md](ANDROID.md)), the lite phone model, and the permanent add-on id `x-abuse-shield@downlz.github.io` for the Firefox Add-ons listing. Release files tested as shipped against the real model host: Chrome `.zip` 17/17, Firefox `.xpi` 17/17 on desktop and 23/23 emulating a phone. Not yet run on a real phone.
+Status: **v0.2.6** — 2026-10-27 ([notes](releases/v0.2.6.md)). **Firefox (desktop and Android) is live on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**, approved from 0.2.5; Chrome and Brave install from GitHub releases. 0.2.6: one-line hidden-post panels with icon buttons on phones (from the first real-phone test), the phone model card names its five languages, README badges.
+
+Distribution today:
+
+| Browser | How | Model |
+|---|---|---|
+| Firefox desktop | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) (signed, auto-updates) | full, 289 MB download |
+| Firefox for Android | same listing | lite, 93 MB download |
+| Chrome, Brave | GitHub releases (`.zip` → Load unpacked; `.crx` for managed installs) | full, 289 MB download |
+
+Earlier: **v0.2.5 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.5.md)): Firefox for Android support (one Firefox add-on for desktop and phones, [ANDROID.md](ANDROID.md)), the lite phone model, and the permanent add-on id `x-abuse-shield@downlz.github.io` for the Firefox Add-ons listing. Release files tested as shipped against the real model host: Chrome `.zip` 17/17, Firefox `.xpi` 17/17 on desktop and 23/23 emulating a phone. Not yet run on a real phone.
 
 Earlier: **v0.2.1 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.1.md)): the model is downloaded on first use from [downlz/x-abuse-shield-model](https://huggingface.co/downlz/x-abuse-shield-model), so downloads are ~7 MB instead of ~240 MB. Tested as shipped against the real host: Chrome `.zip` and Firefox `.xpi` 17/17 each, model downloaded in ~55–60 s on a fresh profile, verdicts 217–350 ms. v0.2.0 ([notes](releases/v0.2.0.md)): each download was tested end to end as shipped (the packed `.xpi` exposed a model-loading bug, fixed: Firefox reports the compressed size of files inside an `.xpi`). **Phase 4 built**: Firefox build, hosted-model option, edge cases, follow exemption, store kit ([STORE.md](STORE.md), [PRIVACY.md](PRIVACY.md)). Phase 1 validated on live x.com by the user; the Phase 4 edge cases still need a live check. Model memory cut from ~850 MB to ~507 MB by shipping it in ONNX Runtime format, run in place (2026-10-24). Results: [SPIKE-REPORT.md](SPIKE-REPORT.md) (model, memory), [CALIBRATION.md](CALIBRATION.md) (detection quality).
 
@@ -265,22 +275,21 @@ x-abuse-shield/
 - ✅ **RTL:** bidi control characters (RLM, overrides, isolates) are stripped before matching, so they can't split a word; placeholder text uses `dir="auto"`
 - ✅ **Accounts you follow:** read from X's data (`relationship_perspectives.following`, older `legacy.following`). They never count as suspicious; "Never filter accounts I follow" (off by default) skips them entirely
 - ✅ **Store kit:** [STORE.md](STORE.md) (decisions, hosting, packaging, listing text, permission justifications, AMO notes) and [PRIVACY.md](PRIVACY.md). The Firefox sources zip leaves out the model and local-only files (real screenshots, labelled posts, results)
-- Not done: Edge/Opera builds (not tested), Firefox for Android (M1), memory measurement in Firefox
+- Not done then: Edge/Opera builds (not tested); Firefox for Android and Firefox memory measurement followed in 0.2.5
 
 ### Planned improvements
 
-**Vocabulary trimming (memory and size).** The model's vocabulary table is 256,000 tokens × 384 values ≈ 98M of its ~140M parameters, and most tokens belong to languages we don't need. Keep only the tokens that occur in the chosen languages and cut the rest.
+**Vocabulary trimming ✅ delivered (0.2.5), for phones.** Built by `npm run model:trim` ([scripts/trim/README.md](../scripts/trim/README.md)); details and measurements in [ANDROID.md](ANDROID.md#the-lite-model).
 
-| | Now (in-place `.ort`) | Estimated after trimming |
+| | Planned estimate | Delivered (lite model, Firefox, phone settings) |
 |---|---|---|
-| Model memory while loaded | +507 MB | ~200–300 MB |
-| Tokenizer memory | ~180 MB of that | ~30 MB |
-| Model file shipped | 256 MB `.ort` + 33 MB tokenizer | ~60–90 MB total |
+| Languages kept | English, Hindi, Hinglish (+?) | English, Hindi, Hinglish, Urdu, Bengali (109,232 of 256,000 tokens) |
+| Memory while loaded | ~200–300 MB | +334 MB (full model in Firefox: +629 MB) |
+| Download | ~60–90 MB | 93 MB (86 MB model + 7 MB tokenizer) |
+| Accuracy | unchanged on kept languages | trimming alone: identical scores on kept text (checked on 25,000 texts); with int8 layers: 0.5–1.8% of verdicts change |
 
-- **Steps (one-time, offline):** count which tokens occur in English, Hindi and Hinglish text (the model's training set `Horizon-Labs/civil-comments-multilingual` plus labelled posts); keep those (typically 30,000–60,000) plus special tokens; slice the embedding matrix and rebuild the tokenizer with remapped ids; re-export, re-quantize and convert to `.ort` as now; check scores against the current model on the calibration set before switching
-- **Needs:** a Python environment for the conversion (PyTorch, Transformers, ONNX tooling); Apache-2.0 allows modifying and redistributing the model
-- **Decisions when we start:** which languages to keep (anything dropped loses accuracy — Urdu, Bengali, Marathi, Tamil…?); whether to keep the full model as a Settings option for other languages
-- **Risk:** accuracy on kept languages should be unchanged (published vocabulary-trimming results), but it must be verified with `npm run calibrate`
+- Went further than planned: the transformer layers are stored as int8 too (most of the size and speed gain), and no PyTorch was needed (ONNX + `tokenizers` only).
+- Not yet: the lite model as a desktop option (Settings) for low-memory computers.
 
 ## 9. Quality budgets
 - Content-script work < 2 ms per post, account and coordination tiers included
@@ -310,7 +319,18 @@ x-abuse-shield/
 
 | Stage | Target | Work | Main risk |
 |---|---|---|---|
-| M1 | Firefox for Android — **in progress**, [ANDROID.md](ANDROID.md) | The desktop Firefox build on Android, adapted at run time (smaller batches, touch layouts, phone x.com layout), with a trimmed phone model; public AMO listing | Phone memory → trimmed model (English, Hindi, Hinglish, Urdu, Bengali) |
+| M1 | Firefox for Android — ✅ **delivered** (0.2.5, [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/); one-line panels 0.2.6), [ANDROID.md](ANDROID.md) | The desktop Firefox build on Android, adapted at run time (smaller batches, touch layouts, phone x.com layout), with a trimmed phone model; public AMO listing | Phone memory → trimmed model (English, Hindi, Hinglish, Urdu, Bengali) |
 | M2 | Safari iOS | WXT Safari target + `safari-web-extension-converter`; needs Mac + Apple developer account | iOS extension memory caps → lexicon-only, or native inference in the container app |
 | M3 (optional) | Android WebView app | Kotlin shell injecting `core/`; ONNX Runtime Mobile; sideloaded | Google sign-in blocked in WebViews; not Play-publishable |
 | Sync | All devices | Import/export first; later "Mute on X" (real mutes sync via X) | — |
+
+## 12. Next up
+
+In rough priority order:
+
+1. **Live-x.com checks on a phone** (from the first test, 2026-10-27, word lists + model working): "Mute on X" with the phone's ⋯ bottom sheet, quote cards, reposts by muted accounts, your own posts recognised without the sidebar; memory and scoring speed on the device (`about:memory` via remote debugging).
+2. **Chrome Web Store** (optional): a neutral name and icon (no "X" letterform), the bundled-model package (`npm run release -- --bundled`), privacy policy URL; the downloaded model is a policy grey area there.
+3. **Lite model as a desktop option** for computers with less memory.
+4. **Calibration on real labelled posts** (100–200) — presets are still provisional; suspicion offsets vs real brigades.
+5. **Safari on iPhone/iPad (M2)**, Edge and Opera builds.
+6. **Flag a visible post as abusive** directly on x.com; mutes across devices.

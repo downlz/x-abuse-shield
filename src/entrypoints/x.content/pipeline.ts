@@ -397,6 +397,7 @@ export class ContentPipeline {
     return {
       action: verdict.severe ? this.settings.actions.severe : this.settings.actions.mild,
       label: quoted ? 'Quoted post hidden by Abuse Shield' : 'Hidden by Abuse Shield',
+      short: quoted ? 'Quote hidden' : 'Hidden',
       detail: shown ? `${what} · ${shown}` : what,
       // X's ⋯ menu belongs to the quoting post, so "Mute on X" can't reach a quoted author.
       actions: quoted ? ['not-abusive', 'mute'] : ['not-abusive', 'mute', 'mute-on-x'],
