@@ -103,7 +103,7 @@ What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import bloc
 
 ## Delivered recently
 
-- ✅ **Firefox for Android** (0.2.5): the same Firefox add-on on phones, with touch-sized controls, compact one-line hidden-post panels (0.2.6) and x.com's phone layout. [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/).
+- ✅ **Firefox for Android** (0.2.5): the same Firefox add-on on phones, with touch-sized controls, compact hidden-post panels with icon buttons (0.2.6) and x.com's phone layout. [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/).
 - ✅ **A smaller, lighter model for phones** (0.2.5): the vocabulary trimmed to English, Hindi, Hinglish, Urdu and Bengali and the layers stored as 8-bit integers — a 93 MB download instead of 289 MB and about 330 MB of memory instead of about 630 MB. Scores in those five languages change for 0.5–1.8% of posts.
 
 ## Planned features

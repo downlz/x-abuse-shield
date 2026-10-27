@@ -174,17 +174,13 @@ describe('render', () => {
     expect(article.querySelector('.xas-short')?.textContent).toBe('Hidden');
   });
 
-  it('opens the whole reason when it is tapped, without letting X open the post', () => {
+  it('keeps a tap on the panel text from opening the post', () => {
     const article = articles()[1]!;
     render(article, '2002', { action: 'blur', label: 'x', detail: 'insult · word list + model toxicity 0.67', actions: [] }, false);
     let xSawIt = false;
     article.addEventListener('click', () => (xSawIt = true));
     onPlaceholderAction(() => undefined);
-    const reason = article.querySelector<HTMLElement>('.xas-placeholder small')!;
-    reason.click();
-    expect(article.querySelector('.xas-placeholder')!.hasAttribute('data-xas-open')).toBe(true);
-    reason.click();
-    expect(article.querySelector('.xas-placeholder')!.hasAttribute('data-xas-open')).toBe(false);
+    article.querySelector<HTMLElement>('.xas-placeholder small')!.click();
     expect(xSawIt).toBe(false);
   });
 

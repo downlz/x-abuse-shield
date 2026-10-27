@@ -4,7 +4,7 @@ Multilingual, on-device abuse filter for x.com. Chrome and Firefox extensions fi
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **v0.2.6** — 2026-10-27 ([notes](releases/v0.2.6.md)). **Firefox (desktop and Android) is live on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**, approved from 0.2.5; Chrome and Brave install from GitHub releases. 0.2.6: one-line hidden-post panels with icon buttons on phones (from the first real-phone test), the phone model card names its five languages, README badges.
+Status: **v0.2.6** — 2026-10-27 ([notes](releases/v0.2.6.md)). **Firefox (desktop and Android) is live on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**, approved from 0.2.5; Chrome and Brave install from GitHub releases. 0.2.6: compact hidden-post panels on phones (centred icon buttons, reason below) (from the first real-phone test), the phone model card names its five languages, README badges.
 
 Distribution today:
 
@@ -319,7 +319,7 @@ x-abuse-shield/
 
 | Stage | Target | Work | Main risk |
 |---|---|---|---|
-| M1 | Firefox for Android — ✅ **delivered** (0.2.5, [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/); one-line panels 0.2.6), [ANDROID.md](ANDROID.md) | The desktop Firefox build on Android, adapted at run time (smaller batches, touch layouts, phone x.com layout), with a trimmed phone model; public AMO listing | Phone memory → trimmed model (English, Hindi, Hinglish, Urdu, Bengali) |
+| M1 | Firefox for Android — ✅ **delivered** (0.2.5, [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/); compact icon panels 0.2.6), [ANDROID.md](ANDROID.md) | The desktop Firefox build on Android, adapted at run time (smaller batches, touch layouts, phone x.com layout), with a trimmed phone model; public AMO listing | Phone memory → trimmed model (English, Hindi, Hinglish, Urdu, Bengali) |
 | M2 | Safari iOS | WXT Safari target + `safari-web-extension-converter`; needs Mac + Apple developer account | iOS extension memory caps → lexicon-only, or native inference in the container app |
 | M3 (optional) | Android WebView app | Kotlin shell injecting `core/`; ONNX Runtime Mobile; sideloaded | Google sign-in blocked in WebViews; not Play-publishable |
 | Sync | All devices | Import/export first; later "Mute on X" (real mutes sync via X) | — |

@@ -32,8 +32,6 @@ const HANDLE = 'data-xas-handle';
 const CELL = 'data-xas-cell';
 export const PLACEHOLDER_CLASS = 'xas-placeholder';
 const ACTION_ATTR = 'data-xas-act';
-/** Set on a phone panel whose reason was tapped open. */
-const OPEN = 'data-xas-open';
 
 type Shape = ['path', string] | ['circle', number, number, number];
 /** Icons for the phone panel (24×24, stroked, after Feather icons, MIT). */
@@ -81,18 +79,18 @@ const CSS = `
 }
 .${PLACEHOLDER_CLASS} button[${ACTION_ATTR}="show"] { font-weight: 600; }
 .${PLACEHOLDER_CLASS} .xas-short, .${PLACEHOLDER_CLASS} button svg { display: none; }
-/* Phones: one line — a short reason that truncates (tap it for the whole reason) and icon buttons. */
+/* Phones: a centred row of icon buttons, with the whole reason on the line below. */
 @media (pointer: coarse) {
-  .${PLACEHOLDER_CLASS} { flex-wrap: nowrap; gap: 8px; padding: 4px 4px 4px 12px; font-size: 14px; }
+  .${PLACEHOLDER_CLASS} { flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px 10px; font-size: 14px; }
   [${ATTR}="blur"] > .${PLACEHOLDER_CLASS} { inset: 50% 12px auto; }
-  .${PLACEHOLDER_CLASS} > span { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .${PLACEHOLDER_CLASS}[${OPEN}] { flex-wrap: wrap; }
-  .${PLACEHOLDER_CLASS}[${OPEN}] > span { flex-basis: 100%; white-space: normal; padding: 6px 0 2px; }
+  /* The two-row panel floats over the blurred post: keep even a one-line post tall enough to hold it. */
+  [${ATTR}="blur"]:not([${REVEALED}]) { min-height: 128px; }
+  .${PLACEHOLDER_CLASS} > span { flex: 1 1 100%; }
   .${PLACEHOLDER_CLASS} .xas-long { display: none; }
   .${PLACEHOLDER_CLASS} .xas-short { display: inline; }
   .${PLACEHOLDER_CLASS} small { display: inline; }
   .${PLACEHOLDER_CLASS} small::before { content: ' · '; }
-  .${PLACEHOLDER_CLASS} .xas-buttons { flex: none; flex-wrap: nowrap; gap: 4px; margin-left: auto; }
+  .${PLACEHOLDER_CLASS} .xas-buttons { order: -1; flex: 1 1 100%; flex-wrap: nowrap; justify-content: center; gap: 8px; }
   .${PLACEHOLDER_CLASS} button {
     position: relative; width: 40px; height: 40px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; gap: 1px;
@@ -231,12 +229,10 @@ export function onPlaceholderAction(
     'click',
     (event) => {
       const clicked = event.target as Element | null;
-      // Tapping the reason shows all of it (phones truncate it); either way it mustn't open the post.
-      const reason = clicked?.closest?.(`.${PLACEHOLDER_CLASS} > span`);
-      if (reason) {
+      // Tapping the panel's text mustn't open the post it hides.
+      if (clicked?.closest?.(`.${PLACEHOLDER_CLASS} > span`)) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        reason.parentElement!.toggleAttribute(OPEN);
         return;
       }
       const button = clicked?.closest?.(`[${ACTION_ATTR}]`);

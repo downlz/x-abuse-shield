@@ -2,7 +2,7 @@
 
 Goal: the same protection on a phone, running smoothly on a **6 GB phone** while scrolling x.com in Firefox for Android.
 
-Status: **delivered** — on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) since 0.2.5 (2026-10). First real-phone test 2026-10-27: word lists and the lite model hide posts on live x.com; it showed the hidden-post panel wrapping onto 3–4 lines, so 0.2.6 makes it one line with icon buttons (tap the reason to read all of it). Still to check on a phone: see [PLAN.md](PLAN.md#12-next-up).
+Status: **delivered** — on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) since 0.2.5 (2026-10). First real-phone test 2026-10-27: word lists and the lite model hide posts on live x.com; it showed the hidden-post panel wrapping onto 3–4 lines, so 0.2.6 puts a centred row of icon buttons on top with the reason below. Still to check on a phone: see [PLAN.md](PLAN.md#12-next-up).
 
 ## Decisions (2026-10-24)
 
@@ -25,7 +25,7 @@ Firefox for Android runs the desktop Firefox build (Manifest V2, `gecko_android`
 | Download note | — | "use Wi-Fi" |
 | Popup | 340 px panel | full screen; closes itself after opening Settings or Hidden posts |
 | Touch targets | — | buttons ≥ 40 px (`pointer: coarse`), on x.com placeholders and extension pages |
-| Hidden-post panel | floats over the blurred post, text buttons | one line over the blurred post: short reason (tap for all of it) and 40 px icon buttons — 👁 Show, ✓ Not abusive, person-minus Mute here, muted speaker + X Mute on X (0.2.6) |
+| Hidden-post panel | floats over the blurred post, text buttons | over the blurred post: a centred row of 40 px icon buttons — 👁 Show, ✓ Not abusive, person-minus Mute here, muted speaker + X Mute on X — and the reason below (0.2.6); blurred posts are at least 128 px tall so it always fits |
 | Badge "!" | toolbar button | none (the extension lives in Firefox's menu); the popup still shows page health |
 
 ### What Android does differently, and how it's handled
