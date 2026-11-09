@@ -1,4 +1,4 @@
-import { createModelRuntime } from '@/adapters/inference/model-runtime';
+import { createModelService } from '@/adapters/inference/model-runtime';
 import { isMessage, type Message, type Reply, type ScoreReply } from '@/shared/messages';
 import { runSpike } from '@/spike/run-spike';
 
@@ -8,7 +8,7 @@ function send(message: Message) {
   void browser.runtime.sendMessage(message).catch(() => undefined);
 }
 
-const runtime = createModelRuntime(location.href, (status) => send({ type: 'model:status', status }));
+const service = createModelService(location.href, (status) => send({ type: 'model:status', status }));
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!isMessage(message)) return;
@@ -18,11 +18,11 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true } satisfies Reply);
       return;
     case 'model:load':
-      runtime.load(message.modelId).catch(() => undefined);
+      service.ensureLoaded().catch(() => undefined);
       sendResponse({ ok: true } satisfies Reply);
       return;
     case 'model:classify':
-      runtime.classify(message.texts, message.modelId).then(
+      service.classify(message.texts).then(
         (scores) => sendResponse({ ok: true, scores } satisfies ScoreReply),
         (error: unknown) => sendResponse({ ok: false, error: errorText(error) } satisfies ScoreReply),
       );

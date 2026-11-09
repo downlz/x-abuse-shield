@@ -16,8 +16,6 @@ import { isOwnNode, render, syncTheme, type Treatment } from '@/adapters/x-dom/r
 import { X } from '@/adapters/x-dom/selectors';
 import type { TabHealth } from '@/shared/health';
 import { BoundedMap, BoundedSet } from '@/shared/bounded';
-import { modelReads } from '@/shared/model-coverage';
-import { activeModelId, modelApproved } from '@/shared/model-status';
 
 export interface PipelineDeps {
   doc: Document;
@@ -160,8 +158,6 @@ export class ContentPipeline {
   }
 
   updateSettings(settings: Settings): void {
-    // Scores from the other model don't apply to this one.
-    if (settings.model.choice !== this.settings.model.choice) this.modelScores.clear();
     this.applySettings(settings);
     this.evaluations.clear();
     this.modelOff = false;
@@ -367,7 +363,7 @@ export class ContentPipeline {
     if (verdict.flagged && directed && assessment.level !== 'low') verdict.reasons.push(...assessment.reasons);
 
     // Posts the word lists already settled don't need the model.
-    const awaitingModel = !model && !ownFlag && this.requestModel(modelText, post.id, lang, match.hinglish);
+    const awaitingModel = !model && !ownFlag && this.requestModel(modelText, post.id);
 
     const entry: Omit<ReviewEntry, 'at'> = {
       postId: post.id,
@@ -458,12 +454,10 @@ export class ContentPipeline {
   }
 
   /** Queues a text for the model. Returns whether scores are on their way. */
-  private requestModel(text: string, postId: string, lang: string | undefined, hinglish: boolean): boolean {
+  private requestModel(text: string, postId: string): boolean {
     const { model } = this.settings;
-    if (!this.deps.classify || !model.enabled || !modelApproved(model) || this.modelOff) return false;
+    if (!this.deps.classify || !model.enabled || !model.downloadApproved || this.modelOff) return false;
     if (text.trim().length < 2 || this.modelFailed.has(text)) return false;
-    // The phone DistilBERT model only reads English, Hindi and Hinglish; other posts get the word lists alone.
-    if (!modelReads(activeModelId(model.choice), text, lang, hinglish)) return false;
     let posts = this.postsByText.get(text);
     if (!posts) this.postsByText.set(text, (posts = new Set()));
     posts.add(postId);

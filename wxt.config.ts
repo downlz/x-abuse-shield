@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { defineConfig } from 'wxt';
-import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, MODEL_ID, PHONE_MODEL_IDS } from './src/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, LITE_MODEL_ID, MODEL_ID } from './src/adapters/inference/model';
 import { ortInPlacePlugin } from './scripts/ort-in-place-plugin';
 
 /**
@@ -22,11 +22,11 @@ const BUNDLED_MODEL =
   process.env.WXT_BUNDLE_MODEL !== 'false' && existsSync(join('public', BUNDLED_MODEL_DIR, MODEL_ID, BUNDLED_MODEL_FILE));
 const MODEL_URL = BUNDLED_MODEL ? '' : (process.env.WXT_MODEL_URL ?? '').replace(/(?<=.)\/?$/, '/');
 /**
- * Phones (Firefox for Android) load the trimmed models, PHONE_MODEL_IDS (`npm run model:trim`, `npm run model:trim -- distilbert`): bundled when
+ * Phones (Firefox for Android) load the trimmed model, LITE_MODEL_ID (`npm run model:trim`): bundled when
  * public/models has it; hosted next to the full model (scripts/release.ts checks the host has both).
  */
 const LITE_MODEL = BUNDLED_MODEL
-  ? Object.values(PHONE_MODEL_IDS).every((id) => existsSync(join('public', BUNDLED_MODEL_DIR, id, BUNDLED_MODEL_FILE)))
+  ? existsSync(join('public', BUNDLED_MODEL_DIR, LITE_MODEL_ID, BUNDLED_MODEL_FILE))
   : !!MODEL_URL && process.env.WXT_LITE_MODEL !== 'false';
 
 const CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
@@ -49,7 +49,7 @@ export default defineConfig({
   zip: {
     // The sources zip (for AMO review) is rebuilt with `npm install` and `npm run model:build`. Like .gitignore,
     // it leaves out generated files and local-only data: real X screenshots, your labelled posts, test results.
-    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl', '**/__pycache__/**'],
+    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl', '**/__pycache__/**', 'docs/releases/v0.3.0-firefox-update.md'],
   },
   hooks: {
     'build:publicAssets': (_wxt, files) => {

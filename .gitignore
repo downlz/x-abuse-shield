@@ -21,3 +21,6 @@ calibration/posts.jsonl
 # Python environment for scripts/trim (vocabulary trimming)
 .venv-trim/
 __pycache__/
+
+# Maintainer-only release checklist (store upload steps, reviewer notes)
+docs/releases/v0.3.0-firefox-update.md

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Settings } from '@/core/config/schema';
 import type { Message } from '@/shared/messages';
-import { approvalKey, modelApproved, modelInfo, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
+import { MODEL_DOWNLOAD_MB, MODEL_LANGUAGES, MODEL_MEMORY_MB, MODEL_SOURCE, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
 
 export function useModelStatus(): ModelStatus | null {
   const [status, setStatus] = useState<ModelStatus | null>(null);
@@ -31,8 +31,7 @@ export function ModelCard(props: {
   const status = useModelStatus();
   const { settings, update } = props;
   const setModel = (patch: Partial<Settings['model']>) => update((s) => ({ ...s, model: { ...s.model, ...patch } }));
-  const state = !settings.model.enabled ? 'off' : !modelApproved(settings.model) ? 'needs-download' : (status?.state ?? 'unloaded');
-  const info = modelInfo(settings.model.choice);
+  const state = !settings.model.enabled ? 'off' : !settings.model.downloadApproved ? 'needs-download' : (status?.state ?? 'unloaded');
 
   return (
     <div className="card stack" style={{ gap: 8 }}>
@@ -43,7 +42,7 @@ export function ModelCard(props: {
 
       {state === 'off' && (
         <>
-          <p className="muted">Word lists only. The model also catches {info.catches}.</p>
+          <p className="muted">Word lists only. The model also catches insults without swear words and veiled threats.</p>
           <div>
             <button type="button" onClick={() => setModel({ enabled: true })}>
               Turn on
@@ -55,16 +54,16 @@ export function ModelCard(props: {
       {state === 'needs-download' && (
         <>
           <p className="muted">
-            <strong>{info.name}</strong> model: catches {info.catches}, in {info.languages}, on your device.{' '}
-            {__BUNDLED_MODEL__ ? 'Included with the extension; ' : `One-time download of ${info.downloadMB} MB; `}
-            uses about {info.memoryMB} MB of memory while x.com is open
+            Catches insults without swear words, veiled threats and abuse in {MODEL_LANGUAGES}, on your device.{' '}
+            {__BUNDLED_MODEL__ ? 'Included with the extension; ' : `One-time download of ${MODEL_DOWNLOAD_MB} MB; `}
+            uses about {MODEL_MEMORY_MB} MB of memory while x.com is open
             {props.compact ? '.' : `, and unloads after ${settings.model.idleMinutes} idle minutes.`}
           </p>
           {lowMemory && <p className="danger">This device reports 4 GB of memory or less — the model may slow it down.</p>}
           {phone && !__BUNDLED_MODEL__ && <p className="muted">On a phone, use Wi-Fi for the download.</p>}
           <div className="row">
-            <button type="button" className="primary" onClick={() => setModel({ downloadApproved: true, approvedSource: approvalKey(settings.model.choice) })}>
-              {__BUNDLED_MODEL__ ? 'Turn on' : `Download (${info.downloadMB} MB)`}
+            <button type="button" className="primary" onClick={() => setModel({ downloadApproved: true, approvedSource: MODEL_SOURCE })}>
+              {__BUNDLED_MODEL__ ? 'Turn on' : `Download (${MODEL_DOWNLOAD_MB} MB)`}
             </button>
             {!props.compact && (
               <button type="button" onClick={() => setModel({ enabled: false })}>

@@ -12,8 +12,6 @@ export const SPIKE_VARIANTS = {
   'no-prepack': { extra: { session: { disable_prepacking: '1' } } },
   /** The shipped .ort model, run in place (IN_PLACE_SESSION_OPTIONS), instead of the downloaded .onnx. */
   'bundled-ort': IN_PLACE_SESSION_OPTIONS,
-  /** The same, with the DistilBERT model (DISTILBERT_MODEL_ID). */
-  'bundled-ort-distilbert': IN_PLACE_SESSION_OPTIONS,
 } satisfies Record<string, SessionOptions>;
 
 export type SpikeVariant = keyof typeof SPIKE_VARIANTS;

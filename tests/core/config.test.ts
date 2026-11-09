@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@/core/config/defaults';
 import { activeThresholds, migrateSettings } from '@/core/config/migrate';
 import { PRESETS } from '@/core/engine/presets';
-import { approvalKey, approvalOutdated } from '@/shared/model-status';
+import { approvalOutdated } from '@/shared/model-status';
 
 describe('migrateSettings', () => {
   it('returns defaults for empty storage', () => {
@@ -37,32 +37,20 @@ describe('migrateSettings', () => {
   });
 });
 
-describe('model approval', () => {
+describe('approvalOutdated', () => {
   const hosted = 'https://huggingface.co/downlz/x-abuse-shield-model/resolve/main/';
-  const model = (downloadApproved: boolean, approvedSource: string, choice: 'distilbert' | 'toxicity' = 'distilbert') => ({ downloadApproved, approvedSource, choice });
+  const model = (downloadApproved: boolean, approvedSource: string) => ({ downloadApproved, approvedSource });
 
-  it('asks again when an update or a switch would download a model the user did not agree to', () => {
-    // 0.2.0 shipped the model: "Turn on" there downloaded nothing.
-    expect(approvalOutdated(model(true, ''), approvalKey('distilbert', hosted))).toBe(true);
-    expect(approvalOutdated(model(true, 'bundled'), approvalKey('distilbert', hosted))).toBe(true);
-    // Up to 0.2.6 an approval named only the source (the toxicity model); the DistilBERT model is a new download.
-    expect(approvalOutdated(model(true, hosted), approvalKey('distilbert', hosted))).toBe(true);
-    // Switching models.
-    expect(approvalOutdated(model(true, approvalKey('toxicity', hosted)), approvalKey('distilbert', hosted))).toBe(true);
-    // Up to 0.2.6 an approval named only the source; every model is a new approval since.
-    expect(approvalOutdated(model(true, hosted, 'toxicity'), approvalKey('toxicity', hosted))).toBe(true);
+  it('asks again when an update would download a model the user only turned on (0.2.0 shipped it)', () => {
+    // 0.2.0 saved no source; "Turn on" there downloaded nothing.
+    expect(approvalOutdated(model(true, ''), hosted)).toBe(true);
+    expect(approvalOutdated(model(true, 'bundled'), hosted)).toBe(true);
+    expect(approvalOutdated(model(true, hosted), 'huggingface')).toBe(true);
   });
 
-  it('keeps an approval for the same model and source, any approval when nothing is downloaded, and no approval as is', () => {
-    expect(approvalKey('distilbert', hosted)).toBe(`${hosted}#gravitee-io/distilbert-multilingual-toxicity-classifier`);
-    expect(approvalOutdated(model(true, approvalKey('distilbert', hosted)), approvalKey('distilbert', hosted))).toBe(false);
-    expect(approvalOutdated(model(true, ''), approvalKey('distilbert', 'bundled'))).toBe(false);
-    expect(approvalOutdated(model(false, ''), approvalKey('distilbert', hosted))).toBe(false);
-  });
-
-  it('defaults to the DistilBERT model and repairs unknown choices', () => {
-    expect(DEFAULT_SETTINGS.model.choice).toBe('distilbert');
-    expect(migrateSettings({ model: { choice: 'hate' } }).model.choice).toBe('distilbert');
-    expect(migrateSettings({ model: { choice: 'toxicity' } }).model.choice).toBe('toxicity');
+  it('keeps an approval for the same source, any approval when nothing is downloaded, and no approval as is', () => {
+    expect(approvalOutdated(model(true, hosted), hosted)).toBe(false);
+    expect(approvalOutdated(model(true, ''), 'bundled')).toBe(false);
+    expect(approvalOutdated(model(false, ''), hosted)).toBe(false);
   });
 });

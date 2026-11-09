@@ -1,4 +1,4 @@
-import { createModelRuntime } from '@/adapters/inference/model-runtime';
+import { createModelService } from '@/adapters/inference/model-runtime';
 import type { WorkerReply, WorkerRequest } from '@/adapters/inference/model-runner';
 
 /** The parts of a dedicated worker's global scope used here (the project's types are for pages). */
@@ -16,13 +16,13 @@ export default defineUnlistedScript({
   include: ['firefox'],
   main() {
     const scope = self as unknown as WorkerScope;
-    const runtime = createModelRuntime(location.href, (status) => scope.postMessage({ type: 'status', status }));
+    const service = createModelService(location.href, (status) => scope.postMessage({ type: 'status', status }));
     scope.onmessage = ({ data }) => {
       if (data.type === 'load') {
-        runtime.load(data.modelId).catch(() => undefined);
+        service.ensureLoaded().catch(() => undefined);
         return;
       }
-      runtime.classify(data.texts, data.modelId).then(
+      service.classify(data.texts).then(
         (scores) => scope.postMessage({ type: 'scores', id: data.id, reply: { ok: true, scores } }),
         (error: unknown) =>
           scope.postMessage({ type: 'scores', id: data.id, reply: { ok: false, error: error instanceof Error ? error.message : String(error) } }),

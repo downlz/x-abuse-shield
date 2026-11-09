@@ -41,15 +41,15 @@ export function createWorkerRunner(onStatus: (status: ServiceStatus) => void): M
   };
 
   return {
-    classify(texts, modelId) {
+    classify(texts) {
       const id = nextId++;
       return new Promise((resolve) => {
         pending.set(id, resolve);
-        send({ type: 'classify', id, texts, modelId });
+        send({ type: 'classify', id, texts });
       });
     },
-    async load(modelId) {
-      send({ type: 'load', modelId });
+    async load() {
+      send({ type: 'load' });
     },
     async close() {
       terminate('The model was unloaded');
