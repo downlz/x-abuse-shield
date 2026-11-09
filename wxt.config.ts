@@ -49,7 +49,7 @@ export default defineConfig({
   zip: {
     // The sources zip (for AMO review) is rebuilt with `npm install` and `npm run model:build`. Like .gitignore,
     // it leaves out generated files and local-only data: real X screenshots, your labelled posts, test results.
-    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl', '**/__pycache__/**'],
+    excludeSources: ['public/models/**', 'public/ort/**', 'spike/results/**', 'tests/fixtures/x/*.png', 'calibration/posts.jsonl', '**/__pycache__/**', 'docs/releases/v0.3.0-firefox-update.md'],
   },
   hooks: {
     'build:publicAssets': (_wxt, files) => {
