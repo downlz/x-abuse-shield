@@ -15,10 +15,10 @@ Everything needed to publish on the Chrome Web Store and Firefox Add-ons (AMO). 
 ## 2. Host the model
 
 ```sh
-npm run model:build    # → public/models/Horizon-Labs/multilingual-toxicity-small/
+npm run model:build    # → public/models/gravitee-io/distilbert-multilingual-toxicity-classifier/ and public/models/Horizon-Labs/multilingual-toxicity-small/
 ```
 
-Upload the contents of `public/models/`, **keeping the `Horizon-Labs/multilingual-toxicity-small/` folder** (5 files, ~289 MB, including `NOTICE.md`), to the host. On Hugging Face, the base URL is `https://huggingface.co/<you>/<repo>/resolve/main/`.
+Upload the contents of `public/models/`, **keeping the folder structure**: `gravitee-io/distilbert-multilingual-toxicity-classifier/` (6 files, ~140 MB, including `LICENSE` and `NOTICE.md`), `Horizon-Labs/multilingual-toxicity-small/` (5 files, ~289 MB) and `x-abuse-shield/multilingual-toxicity-lite/` (the phone model, `npm run model:trim`), to the host. On Hugging Face, the base URL is `https://huggingface.co/<you>/<repo>/resolve/main/`.
 
 Check it: `https://huggingface.co/<you>/<repo>/resolve/main/Horizon-Labs/multilingual-toxicity-small/config.json` should download.
 
@@ -48,11 +48,11 @@ Bump `version` in `package.json` for every upload.
 
 > Abuse Shield hides abusive posts on x.com — insults, threats, slurs and copy-paste troll brigades — before they appear on your screen.
 >
-> • Reads what a post says: an on-device AI model scores 7 kinds of abuse in 34 languages, with built-in word lists for English, Hindi and Hinglish that see through disguised spellings.
+> • Reads what a post says: an on-device AI model scores how toxic each post is, in 15 languages including Hindi and Hinglish (or 7 kinds of abuse in 34 languages with the optional larger model), with built-in word lists for English, Hindi and Hinglish that see through disguised spellings.
 > • Looks at who is posting: replies from days-old, throwaway-looking accounts face stricter thresholds, and the same reply pasted by several accounts is caught as a group.
 > • Repeat offenders are muted automatically, for as long as you choose.
 > • Nothing is deleted or blocked: posts are blurred with a Show button, and a review page explains every decision. One click marks a post "Not abusive".
-> • Works on For you, Following, replies and Notifications, in light and dark themes.
+> • Works on For you, Following, replies, Notifications and search results, in light and dark themes.
 >
 > Private by design: everything runs in your browser. The extension has no server and sends no data anywhere; the only download is the AI model, once, when you turn it on.
 >
@@ -70,7 +70,7 @@ Bump `version` in `package.json` for every upload.
 |---|---|
 | `offscreen` | Runs the on-device AI model (ONNX Runtime WebAssembly with worker threads), which a service worker can't host |
 | `storage` | Keeps settings, mutes, strikes and the review log on the device |
-| `unlimitedStorage` | The downloaded AI model (~289 MB) is cached on the device |
+| `unlimitedStorage` | The downloaded AI model (~140 MB, or ~289 MB for the optional larger model) is cached on the device |
 | `alarms` | Unloads the AI model after a few idle minutes to free memory |
 | Content scripts on `https://x.com/*` | Reads posts on x.com to hide abusive ones, and reads the account data x.com has already loaded into the page |
 
@@ -94,7 +94,9 @@ Bump `version` in `package.json` for every upload.
     WXT_BUNDLE_MODEL=false WXT_MODEL_URL=https://huggingface.co/downlz/x-abuse-shield-model/resolve/main/ npx wxt zip -b firefox
   Output: .output/x-abuse-shield-<version>-firefox.zip (same contents as the uploaded .xpi).
   public/ort/*.wasm is ONNX Runtime Web, copied from node_modules/onnxruntime-web by npm install (scripts/copy-ort.mjs).
-  The AI model is data, downloaded on first use from https://huggingface.co/downlz/x-abuse-shield-model (Apache-2.0).
+  The AI models are data, downloaded on first use from https://huggingface.co/downlz/x-abuse-shield-model:
+  gravitee-io/distilbert-multilingual-toxicity-classifier (OpenRAIL++, LICENSE in its folder) and
+  Horizon-Labs/multilingual-toxicity-small (Apache-2.0).
   ```
 - **Updates:** bump the version, `npm run release`, upload the new `.xpi`. Firefox updates installed copies automatically.
 

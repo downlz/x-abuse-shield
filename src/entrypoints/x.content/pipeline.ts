@@ -15,6 +15,7 @@ import { extractPost, quoteCard, type DomPost } from '@/adapters/x-dom/extract';
 import { isOwnNode, render, syncTheme, type Treatment } from '@/adapters/x-dom/render';
 import { X } from '@/adapters/x-dom/selectors';
 import type { TabHealth } from '@/shared/health';
+import { modelApproved } from '@/shared/model-status';
 
 export interface PipelineDeps {
   doc: Document;
@@ -136,6 +137,8 @@ export class ContentPipeline {
   }
 
   updateSettings(settings: Settings): void {
+    // Scores from the other model don't apply to this one.
+    if (settings.model.choice !== this.settings.model.choice) this.modelScores.clear();
     this.applySettings(settings);
     this.evaluations.clear();
     this.modelOff = false;
@@ -408,7 +411,7 @@ export class ContentPipeline {
   /** Queues a text for the model. Returns whether scores are on their way. */
   private requestModel(text: string, postId: string): boolean {
     const { model } = this.settings;
-    if (!this.deps.classify || !model.enabled || !model.downloadApproved || this.modelOff) return false;
+    if (!this.deps.classify || !model.enabled || !modelApproved(model) || this.modelOff) return false;
     if (text.trim().length < 2 || this.modelFailed.has(text)) return false;
     let posts = this.postsByText.get(text);
     if (!posts) this.postsByText.set(text, (posts = new Set()));
@@ -463,6 +466,8 @@ export class ContentPipeline {
         return isFocal ? scopes.focalPost : scopes.replies;
       case 'notifications':
         return scopes.notifications;
+      case 'search':
+        return scopes.search;
       default:
         return false;
     }

@@ -83,7 +83,13 @@ function main() {
     if (area !== 'local' || !change) return;
     const before = migrateSettings(change.oldValue);
     const after = migrateSettings(change.newValue);
-    if (modelAllowed(after) && !modelAllowed(before)) void preload().catch((error: unknown) => console.error(error));
+    const load = () => void preload(after).catch((error: unknown) => console.error(error));
+    if (before.model.choice !== after.model.choice && modelAllowed(before)) {
+      // Switched to the other model: free this one first (both at once could use over 1.5 GB).
+      void unload(after).then(() => (modelAllowed(after) ? load() : undefined));
+      return;
+    }
+    if (modelAllowed(after) && !modelAllowed(before)) load();
     if (!modelAllowed(after) && modelAllowed(before)) void unload(after);
     if (!modelAllowed(after)) void setModelStatus(restingStatus(after));
   });
@@ -142,7 +148,7 @@ function main() {
         void reportStatus(message.status);
         return;
       case 'model:retry':
-        return reply(preload());
+        return reply(loadSettings().then(preload));
     }
   });
 

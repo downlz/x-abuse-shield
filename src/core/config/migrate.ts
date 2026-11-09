@@ -15,12 +15,14 @@ export function migrateSettings(stored: unknown): Settings {
     if (!ACTION_VALUES.includes(settings.actions[key])) settings.actions[key] = DEFAULT_SETTINGS.actions[key];
   }
   if (!MUTE_VALUES.includes(settings.strikes.muteFor)) settings.strikes.muteFor = DEFAULT_SETTINGS.strikes.muteFor;
+  if (!MODEL_VALUES.includes(settings.model.choice)) settings.model.choice = DEFAULT_SETTINGS.model.choice;
   return settings;
 }
 
 const PRESET_VALUES: Settings['preset'][] = ['relaxed', 'balanced', 'strict', 'custom'];
 const ACTION_VALUES: Settings['actions']['mild'][] = ['blur', 'collapse', 'remove'];
 const MUTE_VALUES: Settings['strikes']['muteFor'][] = ['24h', '7d', '30d', 'forever'];
+const MODEL_VALUES: Settings['model']['choice'][] = ['distilbert', 'toxicity'];
 
 export function activeThresholds(settings: Settings): Thresholds {
   return settings.preset === 'custom' ? settings.customThresholds : PRESETS[settings.preset];

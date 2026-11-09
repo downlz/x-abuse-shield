@@ -1,8 +1,9 @@
 # X Abuse Shield
 
-On-device, multilingual abuse filter for x.com. Scores posts with
-[`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small)
-via Transformers.js, plus word lists, and hides or blurs abusive posts and authors.
+On-device, multilingual abuse filter for x.com. Scores posts with an on-device AI model —
+[`gravitee-io/distilbert-multilingual-toxicity-classifier`](https://huggingface.co/gravitee-io/distilbert-multilingual-toxicity-classifier) by default, or
+[`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small) —
+plus word lists, and hides or blurs abusive posts and authors.
 
 [![Get it on Firefox Add-ons](https://img.shields.io/amo/v/x-abuse-shield?logo=firefoxbrowser&logoColor=white&label=Firefox%20Add-ons&color=FF7139&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)
 [![Latest release](https://img.shields.io/github/v/release/downlz/x-abuse-shield?label=Chrome%20%2F%20Brave&logo=googlechrome&logoColor=white&style=for-the-badge)](https://github.com/downlz/x-abuse-shield/releases/latest)
@@ -17,7 +18,7 @@ via Transformers.js, plus word lists, and hides or blurs abusive posts and autho
 - **Firefox without Add-ons** (e.g. testing a build): `x-abuse-shield-<version>.xpi` from the release, via `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…**. It's removed when Firefox quits; the Add-ons version is the one to keep.
 - The `.crx` is for computers where a policy allows the extension: Chrome on Windows and macOS doesn't install `.crx` files from outside the Chrome Web Store.
 
-Each release page has the full instructions and SHA-256 checksums. The extension is about 7 MB: the AI model is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup — 289 MB on a computer, 93 MB on a phone (a lighter model for English, Hindi, Hinglish, Urdu and Bengali). The word lists work without it.
+Each release page has the full instructions and SHA-256 checksums. The extension is about 7 MB: the AI model is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup — about 140 MB on a computer (289 MB if you choose the 7-category Toxicity model in Settings), 93 MB on a phone (a lighter model for English, Hindi, Hinglish, Urdu and Bengali). The word lists work without it.
 
 ## Screenshots
 
@@ -46,8 +47,8 @@ Abuse Shield judges both **what a post says** and **who is saying it**, entirely
 ## Features
 
 **Reading what a post says**
-- An AI model gives 7 separate scores per post: toxicity, severe toxicity, threat, insult, identity attack, obscenity, sexual content. Each has its own threshold.
-- It covers 34 languages, with built-in word lists for English, Hindi (Devanagari) and Hinglish.
+- An AI model scores every post. The default, DistilBERT, gives one toxicity score in 15 languages including Hindi and Hinglish. The optional Toxicity model (Settings → AI model) gives 7 separate scores — toxicity, severe toxicity, threat, insult, identity attack, obscenity, sexual content — in 34 languages, each with its own threshold.
+- Built-in word lists for English, Hindi (Devanagari) and Hinglish.
 - Disguised spellings are decoded before matching: `f*ck`, `fuuuck`, leetspeak.
 - Mild words such as *pagal* or *gadha* only count when the model also finds the post toxic, so friendly teasing passes.
 - Threat and extortion phrases are caught even without bad words ("I know where you live"). Harmless idioms ("kill it at your interview") are ignored.
@@ -62,10 +63,11 @@ Abuse Shield judges both **what a post says** and **who is saying it**, entirely
 
 **Dealing with repeat offenders**
 - Strikes: 3 flagged posts in 7 days mutes the author automatically, for 24 hours, 7 days, 30 days or forever.
-- Muted authors are hidden everywhere: For you, Following, replies, Notifications and quotes. Their reposts are hidden too.
+- Muted authors are hidden everywhere: For you, Following, replies, Notifications, search results and quotes. Their reposts are hidden too.
 - An optional "Mute on X" button, which you click yourself.
 
 **Staying fair and in control**
+- Filters For you, Following, replies, Notifications and search results (including hashtag pages); each can be switched off in Settings.
 - By default posts are blurred with click-to-reveal; threats and severe abuse are collapsed. Nothing is deleted or blocked on X.
 - A review log shows why each post was hidden: scores, matched words, account reasons, and other members of a copy-paste group. From there you can mark a post "Not abusive", unmute or allowlist.
 - Relaxed / Balanced / Strict presets, per-category sliders, custom word lists, and import/export of your settings.
@@ -73,7 +75,7 @@ Abuse Shield judges both **what a post says** and **who is saying it**, entirely
 - Placeholders follow X's Default, Dim and Lights out themes.
 
 **Private and fast**
-- Everything runs on your device. The only network call is the one-time model download (~289 MB), and there's none when the model ships inside the extension. Account data is read from what X already sends to the page, so the extension makes no extra requests.
+- Everything runs on your device. The only network call is the one-time model download (about 140 MB, or 289 MB for the Toxicity model), and there's none when the model ships inside the extension. Account data is read from what X already sends to the page, so the extension makes no extra requests.
 - Word-list, account and copy-paste checks run before a post appears on screen, so abuse doesn't flash. Model scoring takes about 28 ms per post.
 - The model loads only while an x.com tab is open and unloads after 5 idle minutes. A word-list-only mode is available for low-memory devices.
 
@@ -103,6 +105,7 @@ What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import bloc
 
 ## Delivered recently
 
+- ✅ **A lighter default model and search filtering** (0.3.0): DistilBERT, a 140 MB download instead of 289 MB, with the 7-category Toxicity model still available in Settings; search results and hashtag pages are filtered too.
 - ✅ **Firefox for Android** (0.2.5): the same Firefox add-on on phones, with touch-sized controls, compact hidden-post panels with icon buttons (0.2.6) and x.com's phone layout. [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/).
 - ✅ **A smaller, lighter model for phones** (0.2.5): the vocabulary trimmed to English, Hindi, Hinglish, Urdu and Bengali and the layers stored as 8-bit integers — a 93 MB download instead of 289 MB and about 330 MB of memory instead of about 630 MB. Scores in those five languages change for 0.5–1.8% of posts.
 
@@ -120,7 +123,7 @@ Details and progress are in [docs/PLAN.md](docs/PLAN.md).
 
 ```sh
 npm install             # also copies ONNX Runtime's wasm into public/ort and generates WXT types
-npm run model:build     # downloads the model once, converts it to run in place → public/models (~300 MB)
+npm run model:build     # downloads both models once (DistilBERT + toxicity), converts them to run in place → public/models (~430 MB)
 npm run model:trim      # the smaller phone model (Firefox for Android) → public/models; needs Python 3 (docs/ANDROID.md)
 npm run build           # Chrome / Brave → .output/chrome-mv3
 npm run build:firefox   # Firefox 128+   → .output/firefox-mv2
@@ -226,4 +229,4 @@ Fixtures contain the posts that were on screen, so don't publish them.
 
 ## License
 
-[MIT](LICENSE). The bundled model, [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small), is licensed separately under Apache-2.0.
+[MIT](LICENSE). The AI models are licensed separately: [`gravitee-io/distilbert-multilingual-toxicity-classifier`](https://huggingface.co/gravitee-io/distilbert-multilingual-toxicity-classifier) under OpenRAIL++ (its LICENSE ships with the model files), and [`Horizon-Labs/multilingual-toxicity-small`](https://huggingface.co/Horizon-Labs/multilingual-toxicity-small) under Apache-2.0.

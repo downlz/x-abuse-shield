@@ -15,7 +15,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, join, resolve } from 'node:path';
 import puppeteer from 'puppeteer';
-import { MODEL_ID } from '../src/adapters/inference/model';
+import { LITE_MODEL_ID, MODEL_IDS } from '../src/adapters/inference/model';
 
 const root = join(import.meta.dirname, '..');
 const variants = process.argv.slice(2).filter((arg) => !arg.startsWith('--')).map((dir) => resolve(dir));
@@ -73,7 +73,11 @@ for (const variant of variants) {
     await sleep(20_000); // let start-up settle
     const before = treeMemory(pid);
     const started = Date.now();
-    await page.evaluate(`browser.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 30, preBlur: false } } })`);
+    // The DistilBERT model's config has a `not-toxic` label; phones load the lite model whatever the choice.
+    const choice = JSON.parse(readFileSync(join(variant, 'config.json'), 'utf8')).id2label[0] === 'not-toxic' ? 'distilbert' : 'toxicity';
+    const approvedSource = `http://localhost:${PORT}/#${phone ? LITE_MODEL_ID : MODEL_IDS[choice]}`;
+    const model = { enabled: true, choice, downloadApproved: true, approvedSource, idleMinutes: 30, preBlur: false };
+    await page.evaluate(`browser.storage.local.set({ settings: { model: ${JSON.stringify(model)} } })`);
     let state = '';
     while (Date.now() - started < 5 * 60_000 && state !== 'ready' && state !== 'error') {
       await sleep(500);

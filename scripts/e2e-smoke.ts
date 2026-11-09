@@ -42,6 +42,15 @@ const fixtures = join(root, 'tests', 'fixtures');
  * host". The extension downloads the model on first use.
  */
 const hosted = process.argv.includes('--hosted');
+
+/** --model=toxicity tests the toxicity model; the default is the DistilBERT model, like the extension. Phones always use the light toxicity model. */
+const modelChoice = process.argv.includes('--model=toxicity') ? 'toxicity' : 'distilbert';
+const scoredAs = mobile ? 'toxicity' : modelChoice;
+/** A post only the model catches (no word-list hit), and a clean one. */
+const MODEL_POSTS = {
+  distilbert: ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'],
+  toxicity: ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'],
+}[scoredAs];
 const MODEL_HOST_PORT = 8787;
 const modelsDir = join(root, 'public', 'models');
 /** Paths the model host was asked for. */
@@ -215,6 +224,11 @@ try {
     }
     throw new Error(`${path} didn't load`);
   };
+  /** Changes model settings, keeping the rest (and the approval) as stored. */
+  const setModel = (page: Page, patch: Record<string, unknown>) =>
+    page.evaluate(
+      `${api}.storage.local.get('settings').then(({ settings = {} }) => ${api}.storage.local.set({ settings: { ...settings, model: { ...settings.model, ...${JSON.stringify(patch)} } } }))`,
+    );
   /** Polls the model's status until it's ready or failed, logging each change. */
   const waitForModel = async (page: Page) => {
     const start = Date.now();
@@ -399,7 +413,12 @@ try {
   for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
   const control = await browser.newPage();
   await openExtensionPage(control, 'popup.html');
-  await control.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
+  await setModel(control, { enabled: true, choice: modelChoice, idleMinutes: 5, preBlur: false });
+  // Approve as a user does: the popup's "Turn on" / "Download (… MB)" button.
+  for (let tries = 0; !(await control.evaluate(`(() => { const button = document.querySelector('button.primary'); button?.click(); return !!button; })()`)); tries++) {
+    if (tries > 50) throw new Error('No model approval button in the popup');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   const worker = firefox ? null : await (await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(extensionId))).worker();
   worker?.on('console', (message) => console.log(`  [service worker] ${message.text()}`));
   const loaded = await waitForModel(control);
@@ -409,8 +428,7 @@ try {
     check('hosted: model downloaded once from the model host', downloads === 1, modelRequests.join(', '));
     // Switching the model off unloads it; switched on again, it must load from the cached copy.
     const before = modelRequests.length;
-    const setEnabled = (enabled: boolean) =>
-      control.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: ${enabled}, downloadApproved: true, idleMinutes: 5, preBlur: false } } })`);
+    const setEnabled = (enabled: boolean) => setModel(control, { enabled });
     await setEnabled(false);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await setEnabled(true);
@@ -422,7 +440,7 @@ try {
   const modelOnly = ['2201', '2202']
     .map((id, i) => repeatOffenderCell().replaceAll('2002', id).replaceAll('Srihars47664037', `model_test_${i}`).replace(
       'Chutiya fellow posting useless',
-      ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'][i]!,
+      MODEL_POSTS[i]!,
     ))
     .join('\n');
   pages['/home'] = fakePage('synthetic-home-for-you.html', { url: API.home.url, via: 'fetch' }, modelOnly).replace(
@@ -440,18 +458,58 @@ try {
   const afterModel = await modelPage.page.evaluate(() =>
     Object.fromEntries(['2201', '2202'].map((id) => [id, document.querySelector(`a[href$="/status/${id}"]`)?.closest('article')?.getAttribute('data-xas') ?? null])),
   );
-  check('model hides an insult with no word-list hit, keeps a clean post', same(afterModel, { '2201': 'blur', '2202': null }), JSON.stringify(afterModel));
+  check(
+    `${scoredAs} model hides an insult with no word-list hit, keeps a clean post`,
+    same(afterModel, { '2201': 'blur', '2202': null }),
+    JSON.stringify(afterModel),
+  );
   // Firefox runs the model on one thread: extension pages can't be cross-origin isolated there.
   const latencyLimit = firefox ? 1000 : 300;
   check(`model verdict within ~${latencyLimit} ms of the post appearing (model loaded)`, latency < latencyLimit, `${Math.round(latency)} ms`);
   await modelPage.page.screenshot({ path: join(shotsDir, 'home-model.png'), fullPage: true });
+
+  // Switching models in Settings frees this one and loads the other (bundled builds: no new download to approve).
+  if (!mobile && !hosted) {
+    for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
+    const other = modelChoice === 'distilbert' ? 'toxicity' : 'distilbert';
+    const settingsPage = await browser.newPage();
+    await openExtensionPage(settingsPage, 'popup.html');
+    await setModel(settingsPage, { choice: other });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const switched = await waitForModel(settingsPage);
+    await settingsPage.close();
+    const otherPosts = {
+      distilbert: ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'],
+      toxicity: ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'],
+    }[other];
+    pages['/home'] = fakePage(
+      'synthetic-home-for-you.html',
+      { url: API.home.url, via: 'fetch' },
+      ['2301', '2302']
+        .map((id, i) => repeatOffenderCell().replaceAll('2002', id).replaceAll('Srihars47664037', `switch_test_${i}`).replace('Chutiya fellow posting useless', otherPosts[i]!))
+        .join('\n'),
+    );
+    const switchedPage = await visit(browser, '/home');
+    let afterSwitch: Record<string, string | null> = {};
+    for (const start = Date.now(); Date.now() - start < 15_000; await new Promise((resolve) => setTimeout(resolve, 250))) {
+      afterSwitch = await switchedPage.page.evaluate(() =>
+        Object.fromEntries(['2301', '2302'].map((id) => [id, document.querySelector(`a[href$="/status/${id}"]`)?.closest('article')?.getAttribute('data-xas') ?? null])),
+      );
+      if (afterSwitch['2301']) break;
+    }
+    check(
+      `switching to the ${other} model in Settings loads it and uses it`,
+      switched.startsWith('ready') && same(afterSwitch, { '2301': 'blur', '2302': null }),
+      `${switched} · ${JSON.stringify(afterSwitch)}`,
+    );
+  }
 
   // Optional (slow): the model unloads after the idle time. --idle sets it to 1 minute.
   if (process.argv.includes('--idle')) {
     for (const open of await browser.pages()) if (open.url().startsWith('https://x.com')) await open.close();
     const idle = await browser.newPage();
     await openExtensionPage(idle, 'popup.html');
-    await idle.evaluate(`${api}.storage.local.set({ settings: { model: { enabled: true, downloadApproved: true, idleMinutes: 1, preBlur: false } } })`);
+    await setModel(idle, { idleMinutes: 1 });
     const idleStart = Date.now();
     let state = '';
     while (Date.now() - idleStart < 4 * 60_000 && state !== 'unloaded') {

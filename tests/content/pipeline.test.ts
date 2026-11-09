@@ -10,6 +10,7 @@ import type { MuteState, Strike } from '@/core/mute/mutes';
 import type { ReviewEntry } from '@/core/review/log';
 import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
 import type { TabHealth } from '@/shared/health';
+import { approvalKey } from '@/shared/model-status';
 import { loadHtmlFixture, loadJsonFixture } from '../helpers';
 
 const NOW = Date.parse('2026-10-23T15:00:00Z');
@@ -75,7 +76,7 @@ function deferredModel(score: (text: string) => CategoryScores | null) {
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
-const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true } };
+const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true, approvedSource: approvalKey(DEFAULT_SETTINGS.model.choice) } };
 
 /** postId → data-xas action, or null when untouched. */
 function treatments(): Record<string, string | null> {
@@ -133,6 +134,20 @@ describe('home · For you', () => {
     loadHtmlFixture('synthetic-home-for-you.html');
     document.querySelectorAll('[role="tab"]').forEach((tab, i) => tab.setAttribute('aria-selected', String(i === 1)));
     setup('/home', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, following: false } } }).pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('filters search results and hashtag pages under their own switch, on by default', () => {
+    expect(DEFAULT_SETTINGS.scopes.search).toBe(true);
+    setup('/search').pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/hashtag/cricket').pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/search', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, search: false } } }).pipeline.attach();
     expect(treatments()['2002']).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 import { env } from '@huggingface/transformers';
 import { CATEGORIES, type CategoryScores } from '@/core/engine/categories';
-import { BUNDLED_MODEL_DIR, MODEL_ID } from '@/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, DISTILBERT_MODEL_ID, MODEL_ID } from '@/adapters/inference/model';
 import { loadInPlaceClassifier } from '@/adapters/inference/ort-classifier';
 import { loadToxicityClassifier, type ToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
 import { chunk, latencyStats } from './stats';
@@ -31,8 +31,13 @@ export async function runSpike(
   report({ stage: 'load', message: `Loading model (${cachedFilesBefore} files cached)…` });
   const loadStart = performance.now();
   const classifier =
-    variant === 'bundled-ort'
-      ? await loadInPlaceClassifier({ modelBaseUrl: new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href, remote: false, ortBaseUrl })
+    variant === 'bundled-ort' || variant === 'bundled-ort-distilbert'
+      ? await loadInPlaceClassifier({
+          modelBaseUrl: new URL(`/${BUNDLED_MODEL_DIR}`, location.href).href,
+          remote: false,
+          ortBaseUrl,
+          modelId: variant === 'bundled-ort-distilbert' ? DISTILBERT_MODEL_ID : MODEL_ID,
+        })
       : await loadToxicityClassifier({
           ortBaseUrl,
           sessionOptions: SPIKE_VARIANTS[variant],

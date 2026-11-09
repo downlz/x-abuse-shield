@@ -38,3 +38,5 @@ export const STATUS_HREF = /\/status\/(\d+)/;
 /** A profile link: /<handle>. */
 export const PROFILE_HREF = /^\/([A-Za-z0-9_]{1,15})$/;
 export const NOTIFICATIONS_PATH = /^\/notifications(\/|$)/;
+/** Search results (/search?q=…, any tab) and hashtag pages (/hashtag/<tag>), which X shows as a search. */
+export const SEARCH_PATH = /^\/(search|hashtag\/[^/]+)(\/|$)/;

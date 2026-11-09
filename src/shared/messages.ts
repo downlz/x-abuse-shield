@@ -33,9 +33,9 @@ export type Message =
   /** Content script → background: score these texts (background checks settings, then asks the offscreen document). */
   | { type: 'model:score'; texts: string[] }
   /** Background → offscreen document. A different type from model:score, which the offscreen document also receives. */
-  | { type: 'model:classify'; texts: string[] }
+  | { type: 'model:classify'; texts: string[]; modelId: string }
   /** Background → offscreen document: load now (e.g. right after the download is approved). */
-  | { type: 'model:load' }
+  | { type: 'model:load'; modelId: string }
   /** Offscreen document → background. */
   | { type: 'model:status'; status: ModelStatus }
   /** Popup/options → background: load again after an error. */

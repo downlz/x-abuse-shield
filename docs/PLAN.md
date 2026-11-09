@@ -4,15 +4,15 @@ Multilingual, on-device abuse filter for x.com. Chrome and Firefox extensions fi
 
 Judges both **what a post says** (model + word lists) and **who is saying it** (account signals + coordinated copy-paste replies), so new throwaway and paid troll accounts are caught on their first post.
 
-Status: **v0.2.6** — 2026-10-27 ([notes](releases/v0.2.6.md)). **Firefox (desktop and Android) is live on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**, approved from 0.2.5; Chrome and Brave install from GitHub releases. 0.2.6: compact hidden-post panels on phones (centred icon buttons, reason below) (from the first real-phone test), the phone model card names its five languages, README badges.
+Status: **v0.3.0** prepared — 2026-11-09 ([notes](releases/v0.3.0.md)): DistilBERT (`gravitee-io/distilbert-multilingual-toxicity-classifier`) is the default model, ~140 MB instead of 289 MB, with the 7-category toxicity model as a Settings option; search results and hashtag pages are filtered (on by default). Previously **v0.2.6** — 2026-10-27 ([notes](releases/v0.2.6.md)). **Firefox (desktop and Android) is live on [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/)**, approved from 0.2.5; Chrome and Brave install from GitHub releases. 0.2.6: compact hidden-post panels on phones (centred icon buttons, reason below) (from the first real-phone test), the phone model card names its five languages, README badges.
 
 Distribution today:
 
 | Browser | How | Model |
 |---|---|---|
-| Firefox desktop | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) (signed, auto-updates) | full, 289 MB download |
+| Firefox desktop | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) (signed, auto-updates) | DistilBERT, ~140 MB download (0.3.0); toxicity 289 MB as an option |
 | Firefox for Android | same listing | lite, 93 MB download |
-| Chrome, Brave | GitHub releases (`.zip` → Load unpacked; `.crx` for managed installs) | full, 289 MB download |
+| Chrome, Brave | GitHub releases (`.zip` → Load unpacked; `.crx` for managed installs) | DistilBERT, ~140 MB download (0.3.0); toxicity 289 MB as an option |
 
 Earlier: **v0.2.5 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.5.md)): Firefox for Android support (one Firefox add-on for desktop and phones, [ANDROID.md](ANDROID.md)), the lite phone model, and the permanent add-on id `x-abuse-shield@downlz.github.io` for the Firefox Add-ons listing. Release files tested as shipped against the real model host: Chrome `.zip` 17/17, Firefox `.xpi` 17/17 on desktop and 23/23 emulating a phone. Not yet run on a real phone.
 
@@ -45,7 +45,7 @@ Earlier: **v0.2.1 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.1.m
 | 6 | Stack | TypeScript, WXT, React (popup/options), Vitest |
 | 7 | Account data source | Read the user records in X's own API responses as the page loads them (passive, no extra requests). DOM-only fallback (avatar URL, handle) when a record is missing |
 | 8 | Role of account signals | They lower thresholds; they never flag a clean post on their own. Copy-paste replies can be hidden even when clean, but only as an opt-in |
-| 9 | Scopes | For you, Following, post replies, Notifications. Search is out for now |
+| 9 | Scopes | For you, Following, post replies, Notifications; search results and hashtag pages from 0.3.0 |
 | 10 | x.com fixtures | Hand-built HTML and API-response fixtures modelled on X's current markup (marked synthetic); real-world validation on live x.com via the health checks. Screenshots in `tests/fixtures/x/` are visual reference only |
 
 ## 3. Architecture
@@ -325,6 +325,8 @@ x-abuse-shield/
 | Sync | All devices | Import/export first; later "Mute on X" (real mutes sync via X) | — |
 
 ## 12. Next up
+
+**Decided (0.3.0):** DistilBERT (`gravitee-io/distilbert-multilingual-toxicity-classifier`, OpenRAIL++) is the default, with the toxicity model as a Settings option. The hate-speech model evaluated before it ([MODEL-COMPARISON.md](MODEL-COMPARISON.md)) was dropped: ~900 MB of memory and blind to insults. DistilBERT gives one toxic / not-toxic score (read as toxicity); its published ONNX export only runs one post per call (batch 1 baked into its reshapes), so it scores posts one at a time — a re-export from `model.safetensors` would lift that. Still to do: measure its memory (`npm run memory:firefox`; the model card's 300/380 MB are estimates) and calibrate it (`npm run calibrate -- --model distilbert`).
 
 In rough priority order:
 

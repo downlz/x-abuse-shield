@@ -1,10 +1,11 @@
-import { NOTIFICATIONS_PATH, THREAD_PATH, X } from './selectors';
+import { NOTIFICATIONS_PATH, SEARCH_PATH, THREAD_PATH, X } from './selectors';
 
-export type PageContext = 'for-you' | 'following' | 'thread' | 'notifications' | 'other';
+export type PageContext = 'for-you' | 'following' | 'thread' | 'notifications' | 'search' | 'other';
 
 export function detectPageContext(doc: Document = document, path: string = location.pathname): PageContext {
   if (THREAD_PATH.test(path)) return 'thread';
   if (NOTIFICATIONS_PATH.test(path)) return 'notifications';
+  if (SEARCH_PATH.test(path)) return 'search';
   if (path === '/home') {
     const tabs = [...doc.querySelectorAll(X.homeTabs)];
     const selected = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');

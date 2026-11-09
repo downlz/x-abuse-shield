@@ -7,16 +7,16 @@ import type { ServiceStatus } from './model-service';
  */
 export interface ModelRunner {
   /** Scores texts, starting the model's context first if needed. */
-  classify(texts: string[]): Promise<ScoreReply>;
+  classify(texts: string[], modelId: string): Promise<ScoreReply>;
   /** Starts loading (or downloading) the model now. */
-  load(): Promise<void>;
+  load(modelId: string): Promise<void>;
   /** Frees the model's memory. */
   close(): Promise<void>;
   isOpen(): Promise<boolean>;
 }
 
 /** Background → Firefox model worker. */
-export type WorkerRequest = { type: 'load' } | { type: 'classify'; id: number; texts: string[] };
+export type WorkerRequest = { type: 'load'; modelId: string } | { type: 'classify'; id: number; texts: string[]; modelId: string };
 
 /** Firefox model worker → background. */
 export type WorkerReply = { type: 'status'; status: ServiceStatus } | { type: 'scores'; id: number; reply: ScoreReply };

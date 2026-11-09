@@ -82,6 +82,10 @@ describe('notifications (synthetic)', () => {
   it('reads mention posts and ignores like/follow items', () => {
     expect(detectPageContext(document, '/notifications/mentions')).toBe('notifications');
     expect(detectPageContext(document, '/notifications')).toBe('notifications');
+    expect(detectPageContext(document, '/search')).toBe('search');
+    expect(detectPageContext(document, '/hashtag/IPL2026')).toBe('search');
+    expect(detectPageContext(document, '/search-advanced')).toBe('other');
+    expect(detectPageContext(document, '/hashtag')).toBe('other');
     expect(articles().map((a) => extractPost(a)?.handle)).toEqual(['kattar_x', 'old_friend', 'kattar_x']);
   });
 });

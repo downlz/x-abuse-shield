@@ -9,14 +9,14 @@ import type { ModelRunner } from './model-runner';
 const OFFSCREEN_PATH = '/offscreen.html';
 
 export const offscreenRunner: ModelRunner = {
-  async classify(texts) {
+  async classify(texts, modelId) {
     await ensureOffscreenReady();
-    const reply = (await browser.runtime.sendMessage({ type: 'model:classify', texts })) as ScoreReply | undefined;
+    const reply = (await browser.runtime.sendMessage({ type: 'model:classify', texts, modelId })) as ScoreReply | undefined;
     return reply ?? { ok: false, error: 'No reply from the model' };
   },
-  async load() {
+  async load(modelId) {
     await ensureOffscreenReady();
-    await browser.runtime.sendMessage({ type: 'model:load' });
+    await browser.runtime.sendMessage({ type: 'model:load', modelId });
   },
   close: closeOffscreenDocument,
   isOpen: hasOffscreenDocument,
