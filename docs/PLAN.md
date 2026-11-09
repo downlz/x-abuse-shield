@@ -11,7 +11,7 @@ Distribution today:
 | Browser | How | Model |
 |---|---|---|
 | Firefox desktop | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/) (signed, auto-updates) | DistilBERT, ~140 MB download (0.3.0); toxicity 289 MB as an option |
-| Firefox for Android | same listing | lite, 93 MB download |
+| Firefox for Android | same listing | DistilBERT phone model, 71 MB download (0.3.0); toxicity phone model 93 MB as an option |
 | Chrome, Brave | GitHub releases (`.zip` → Load unpacked; `.crx` for managed installs) | DistilBERT, ~140 MB download (0.3.0); toxicity 289 MB as an option |
 
 Earlier: **v0.2.5 released on GitHub** — 2026-10-24 ([notes](releases/v0.2.5.md)): Firefox for Android support (one Firefox add-on for desktop and phones, [ANDROID.md](ANDROID.md)), the lite phone model, and the permanent add-on id `x-abuse-shield@downlz.github.io` for the Firefox Add-ons listing. Release files tested as shipped against the real model host: Chrome `.zip` 17/17, Firefox `.xpi` 17/17 on desktop and 23/23 emulating a phone. Not yet run on a real phone.
@@ -326,7 +326,7 @@ x-abuse-shield/
 
 ## 12. Next up
 
-**Decided (0.3.0):** DistilBERT (`gravitee-io/distilbert-multilingual-toxicity-classifier`, OpenRAIL++) is the default, with the toxicity model as a Settings option. The hate-speech model evaluated before it ([MODEL-COMPARISON.md](MODEL-COMPARISON.md)) was dropped: ~900 MB of memory and blind to insults. DistilBERT gives one toxic / not-toxic score (read as toxicity); its published ONNX export only runs one post per call (batch 1 baked into its reshapes), so it scores posts one at a time — a re-export from `model.safetensors` would lift that. Still to do: measure its memory (`npm run memory:firefox`; the model card's 300/380 MB are estimates) and calibrate it (`npm run calibrate -- --model distilbert`).
+**Decided (0.3.0):** DistilBERT (`gravitee-io/distilbert-multilingual-toxicity-classifier`, OpenRAIL++) is the default, with the toxicity model as a Settings option. The hate-speech model evaluated before it ([MODEL-COMPARISON.md](MODEL-COMPARISON.md)) was dropped: ~900 MB of memory and blind to insults. DistilBERT gives one toxic / not-toxic score (read as toxicity); its published ONNX export only runs one post per call (batch 1 baked into its reshapes), so it scores posts one at a time — a re-export from `model.safetensors` would lift that. Memory in Firefox: +348 MB (toxicity +656 MB, same day); Chrome still estimated (300 MB). Phones get a trimmed version for English, Hindi and Hinglish (71 MB, identical scores there; other posts skip it), and long sessions no longer grow the content script's memory ([ANDROID.md](ANDROID.md)). Still to do: calibrate it (`npm run calibrate -- --model distilbert`) and measure Chrome.
 
 In rough priority order:
 

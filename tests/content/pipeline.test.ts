@@ -239,6 +239,59 @@ describe('notifications', () => {
   });
 });
 
+describe('long sessions', () => {
+  // Distinct made-up words per post, so posts don't look like one giant copy-paste brigade.
+  const SYLLABLES = ['ka', 'ri', 'to', 'mu', 'sen', 'dal', 'pra', 'vin', 'lo', 'che', 'nam', 'gu', 'ta', 'be', 'sho', 'ra'];
+  const word = (x: number) => SYLLABLES[x % 16]! + SYLLABLES[(x >> 4) % 16]! + SYLLABLES[(x >> 8) % 16]!;
+  const textOf = (n: number) => {
+    let seed = (n * 2654435761) >>> 0;
+    return Array.from({ length: 9 }, () => word((seed = (seed * 1103515245 + 12345) >>> 0) >>> 8)).join(' ');
+  };
+
+  it('keeps what a tab remembers bounded while X adds posts and removes them as you scroll', async () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const cell = [...document.querySelectorAll('[data-testid="cellInnerDiv"]')].find((c) => c.innerHTML.includes('/status/2002'))!;
+    const template = cell.outerHTML;
+    const timeline = cell.parentElement!;
+    const { pipeline } = setup('/home', { settings: modelOn, classify: async (texts) => texts.map(() => scores()) });
+
+    const CHUNK = 700;
+    for (let chunk = 0; chunk < 6; chunk++) {
+      const added: Element[] = [];
+      for (let i = 0; i < CHUNK; i++) {
+        const n = chunk * CHUNK + i;
+        timeline.insertAdjacentHTML(
+          'beforeend',
+          template.replaceAll('2002', String(500000 + n)).replaceAll('Srihars47664037', `walker_${n}`).replace('Chutiya fellow posting useless', textOf(n)),
+        );
+        added.push(timeline.lastElementChild!.querySelector('article')!);
+      }
+      pipeline.process(added);
+      await settle();
+      // X's timeline is virtualised: posts scrolled far away leave the page.
+      added.forEach((article) => article.closest('[data-testid="cellInnerDiv"]')!.remove());
+    }
+    pipeline.process([]);
+
+    const stats = pipeline.memoryStats();
+    expect(stats.evaluations).toBeLessThanOrEqual(3000);
+    expect(stats.modelScores).toBeLessThanOrEqual(2000);
+    expect(stats.postsByText).toBe(0);
+    expect(stats.copyGroups).toBeLessThanOrEqual(2000);
+    // Removed posts' elements are let go (at most twice what was last on the page is held).
+    expect(stats.articles).toBeLessThanOrEqual(2 * CHUNK);
+  }, 30_000);
+
+  it('cuts long posts before they reach the model', async () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    document.querySelector('a[href$="/status/2001"]')!.closest('article')!.querySelector('[data-testid="tweetText"] span')!.textContent = 'lovely '.repeat(3000);
+    const seen: string[] = [];
+    setup('/home', { settings: modelOn, classify: async (texts) => (seen.push(...texts), texts.map(() => scores())) }).pipeline.attach();
+    await settle();
+    expect(Math.max(...seen.map((t) => t.length))).toBeLessThanOrEqual(4000);
+  });
+});
+
 describe('review log and corrections', () => {
   it('reports why a post was hidden, with account and copy-paste details', () => {
     loadHtmlFixture('synthetic-thread.html');

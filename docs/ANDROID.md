@@ -62,6 +62,49 @@ How the scores move, against the original model on held-out text (`scripts/trim/
 
 The lite model's changes in the five languages go both ways and lean slightly stricter: of 2,000 posts, 14 became hidden and 9 shown (our test posts: 1 newly hidden). On a phone that's a post or two in a hundred, all near the thresholds; the word lists, which catch most Hindi and Hinglish abuse, are unaffected. Phone CPUs are several times slower than this desktop on one thread, so expect roughly 0.2–0.5 s per batch of 4 posts there; to be measured on a real phone.
 
+### The DistilBERT phone model (0.3.0)
+
+From 0.3.0 phones load the trimmed version of whichever model is chosen: the DistilBERT phone model (`DISTILBERT_LITE_MODEL_ID`, the default) or the toxicity one above.
+
+1. **Vocabulary trimmed to English, Hindi and Hinglish** (`npm run model:trim -- distilbert`, [scripts/trim/README.md](../scripts/trim/README.md)). The vocabulary table was 92 MB of the 136 MB model; 34,671 of 119,547 tokens are kept. **Model 136 → 70 MB, tokenizer 2.9 → 0.6 MB.** DistilBERT's layers were int8 already, so there's nothing more to quantize. Text whose tokens were all kept tokenizes, and scores, exactly as before: 99.5% of unseen English, 98.7% of Hindi and 99.9% of Hinglish texts. The build checks the corpora and our 404 word-list terms and test posts and stops if any differ.
+2. **Posts in other languages skip it** (`MODEL_COVERAGE`, `src/shared/model-coverage.ts`). WordPiece has no byte fallback, so a dropped language falls apart into `[UNK]` and single letters, and the trimmed model then calls many harmless posts toxic. A post goes to the model only if most of its letters are Latin or Devanagari, and X hasn't tagged it as a Latin-script language the model dropped (French, German, Spanish…). Posts the word lists recognise as Hinglish always go through, since X sometimes mistags romanised Hindi. Skipped posts are still judged by the word lists, account checks and copy-paste detection.
+
+Against the full DistilBERT (`npm run model:trim -- distilbert compare`; verdict = toxicity ≥ 0.75):
+
+| Text | Verdicts changed |
+|---|---|
+| English, Hindi, Hinglish (400 each) | none (identical scores) |
+| Our 68 test posts | none |
+| French, German, Spanish (150 each), if scored | 24–29%, nearly all wrongly hidden. Skipped instead (X's language tag) |
+| Arabic, Russian, Japanese (150 each), if scored | 9–89%. Skipped instead (script) |
+
+Memory and speed, Firefox with phone settings (`npm run memory:firefox -- --phone …`, three runs each, Firefox 159 on a desktop CPU, 2026-11-09):
+
+| Phone model | Download | Memory while loaded | Load (cached) | 24 posts |
+|---|---|---|---|---|
+| **DistilBERT (default)** | **71 MB** | +140 / +249 / +254 MB | 2.0–2.1 s | 1.2–1.5 s |
+| Toxicity | 89 MB | +193 / +199 / +354 MB | 3.1–4.7 s | 1.2–2.3 s |
+
+Firefox's figure moves by ±100 MB between identical runs, more than the difference between the two. On one runtime in Node (`onnxruntime-node`, the same in-place options) the DistilBERT phone model takes about 160 MB and the toxicity one about 195 MB.
+
+### Memory over a long session (0.3.0)
+
+x.com is one page that stays open for hours, so whatever the content script remembers per post grows for as long as the tab is open. Before 0.3.0 nothing was ever forgotten:
+
+| What was kept | Fix |
+|---|---|
+| Every post's element, after X removed it from the page (its whole DOM tree stayed alive) | Elements X has removed are dropped (at most twice what's on the page) |
+| Evaluations, X's post and account data, model scores, reported and revealed posts | Capped (`BoundedMap`/`BoundedSet`: 3,000 posts and accounts, 2,000 texts); the oldest go first |
+| Which posts wait for a text's score | Cleared when the score arrives |
+| Copy-paste groups (and each new post was compared with all of them, so it slowed down too) | 2,000 groups, 100 copies each; the least recently active go first |
+| Long posts (up to 25,000 characters) as cache keys | Cut to 4,000 characters, well past the 256 tokens the model reads |
+| The model's score cache | 1,000 texts on phones (5,000 on desktop) |
+| Today's flagged posts in the background page (lives as long as the browser) | Starts again each day |
+
+`tests/content/pipeline.test.ts` ("long sessions") scrolls 4,200 posts through the page the way X does (added, then removed) and checks every cache stays within its cap. Profiling the same session showed a steady 0.5–0.8 ms per post from the first post to the last. Unchanged and already bounded: the model unloads after 3 idle minutes on a phone, and terminating its worker frees all of its memory, including ONNX Runtime's WebAssembly heap, which never shrinks.
+
+One limit remains: Firefox has no `navigator.deviceMemory`, so the "4 GB or less" check that leaves the model off on low-memory devices only works in Chrome.
+
 ## Testing
 
 ```sh

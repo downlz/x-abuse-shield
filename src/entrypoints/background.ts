@@ -48,8 +48,9 @@ function main() {
     queue = run.catch((error: unknown) => console.error('X Abuse Shield:', error));
     return run;
   };
-  // A post flagged in two tabs counts once in today's stats.
-  const counted = new Set<string>();
+  // A post flagged in two tabs counts once in today's stats. Firefox's background page lives as long as the
+  // browser, so this is only today's posts: it starts again each day.
+  const counted = { day: localDay(), posts: new Set<string>() };
 
   // Firefox runs the model in a worker owned by this page, so a fresh page has no model loaded.
   // Android kills idle extension processes and restarts this page when it's needed again.
@@ -157,11 +158,16 @@ function main() {
   });
 }
 
-async function onFlagged(entry: ReviewEntry, strike: Strike | undefined, counted: Set<string>): Promise<void> {
+async function onFlagged(entry: ReviewEntry, strike: Strike | undefined, counted: { day: string; posts: Set<string> }): Promise<void> {
   const settings = await loadSettings();
-  const stats = await loadStats(localDay());
-  if (!counted.has(entry.postId)) {
-    counted.add(entry.postId);
+  const day = localDay();
+  const stats = await loadStats(day);
+  if (counted.day !== day) {
+    counted.day = day;
+    counted.posts.clear();
+  }
+  if (!counted.posts.has(entry.postId)) {
+    counted.posts.add(entry.postId);
     stats.flagged++;
   }
   if (strike && settings.strikes.enabled) {

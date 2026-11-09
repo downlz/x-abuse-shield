@@ -1,6 +1,6 @@
 # Phone model: vocabulary trimming
 
-`npm run model:trim` builds the smaller model Firefox for Android uses (`LITE_MODEL_ID`, see [docs/ANDROID.md](../../docs/ANDROID.md)). It needs `npm run model:build` first, which downloads the original model, and Python 3.
+`npm run model:trim` builds the smaller toxicity model Firefox for Android uses (`LITE_MODEL_ID`, see [docs/ANDROID.md](../../docs/ANDROID.md)). It needs `npm run model:build` first, which downloads the original model, and Python 3.
 
 What it does, all in `.cache/trim/` and `.venv-trim/` (both git-ignored):
 
@@ -12,6 +12,22 @@ What it does, all in `.cache/trim/` and `.venv-trim/` (both git-ignored):
 4. `trim_vocab.py build`: replays the tokenizer's BPE on every word of the chosen languages' texts and keeps every token it creates, intermediate ones included, then removes the rest from the tokenizer (vocabulary and merge rules) and from the model's vocabulary table. It re-tokenizes real text with both tokenizers and **stops if any kept text tokenizes differently**, so on that text the model gives the same scores as the original.
 5. `quantize.py` (optional, `INT8_LAYERS` in `run.mjs`): stores the transformer layers' weights as int8.
 6. `to-ort.ts`: converts to ONNX Runtime's `.ort` and writes `public/models/<LITE_MODEL_ID>/`.
+
+## The DistilBERT phone model
+
+`npm run model:trim -- distilbert` builds `DISTILBERT_LITE_MODEL_ID`, the phone version of the default model (needs `npm run model:build -- distilbert` first). DistilBERT's tokenizer is WordPiece, not BPE, so it has its own script, `trim_wordpiece.py`:
+
+1. Keeps every token the original tokenizer uses on the English, Hindi and Hinglish corpora above and on our word lists and test posts, the special tokens, and every single Latin and Devanagari character, digit, punctuation mark and symbol (so an unseen word splits into pieces rather than becoming `[UNK]`).
+2. WordPiece splits greedily, longest piece first, so text whose tokens were all kept splits exactly as before; the build checks this and stops if any kept text changes.
+3. Slices the int8 vocabulary table to the kept rows. The layers are int8 already, so there's no quantize step.
+4. `to-ort.ts` converts it and writes `public/models/x-abuse-shield/distilbert-toxicity-lite/`, with the OpenRAIL++ `LICENSE`.
+
+Result: 34,671 of 119,547 tokens; model 136 → 70 MB, tokenizer 2.9 → 0.6 MB; identical scores on English, Hindi and Hinglish. WordPiece has no byte fallback, so text in dropped languages falls apart and is often wrongly scored toxic. The extension doesn't send such posts to this model (`MODEL_COVERAGE` in `src/adapters/inference/model.ts`); they're judged by the word lists alone.
+
+```sh
+npm run model:trim -- distilbert analyze    # tokens and exact-tokenization coverage per language set
+npm run model:trim -- distilbert compare    # scores vs the original: kept languages, six dropped ones, our test posts
+```
 
 Other tools:
 

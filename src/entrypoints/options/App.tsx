@@ -164,7 +164,10 @@ function AiModel({ settings, update }: { settings: Settings; update: Update }) {
         {settings.model.choice === 'distilbert'
           ? 'DistilBERT (smaller, faster): one toxic / not-toxic verdict in 15 languages including Hindi and Hinglish. It scores posts as “Toxicity” below; the other categories are left to the word lists.'
           : 'Toxicity (the original model): insults, threats, obscenity and identity attacks, in 34 languages.'}
-        {isPhone && ' Phones use the light toxicity model either way.'}
+        {isPhone &&
+          (settings.model.choice === 'distilbert'
+            ? ' On phones, a lighter DistilBERT for English, Hindi and Hinglish; posts in other languages are left to the word lists.'
+            : ' On phones, a lighter version for English, Hindi, Hinglish, Urdu and Bengali.')}
       </p>
       <ModelCard settings={settings} update={update} heading="Status" />
       <Check checked={settings.model.enabled} onChange={(enabled) => setModel({ enabled })}>

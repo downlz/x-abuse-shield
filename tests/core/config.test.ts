@@ -49,13 +49,8 @@ describe('model approval', () => {
     expect(approvalOutdated(model(true, hosted), approvalKey('distilbert', hosted))).toBe(true);
     // Switching models.
     expect(approvalOutdated(model(true, approvalKey('toxicity', hosted)), approvalKey('distilbert', hosted))).toBe(true);
-    // A 0.2.x approval from another host doesn't carry over.
-    expect(approvalOutdated(model(true, 'https://other.example/', 'toxicity'), approvalKey('toxicity', hosted))).toBe(true);
-  });
-
-  it('keeps a 0.2.x approval (source only) for the toxicity model and the phone model it covered', () => {
-    expect(approvalOutdated(model(true, hosted, 'toxicity'), `${hosted}#Horizon-Labs/multilingual-toxicity-small`)).toBe(false);
-    expect(approvalOutdated(model(true, hosted), `${hosted}#x-abuse-shield/multilingual-toxicity-lite`)).toBe(false);
+    // Up to 0.2.6 an approval named only the source; every model is a new approval since.
+    expect(approvalOutdated(model(true, hosted, 'toxicity'), approvalKey('toxicity', hosted))).toBe(true);
   });
 
   it('keeps an approval for the same model and source, any approval when nothing is downloaded, and no approval as is', () => {

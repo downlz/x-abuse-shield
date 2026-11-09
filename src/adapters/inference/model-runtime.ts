@@ -5,7 +5,7 @@
  */
 import type { CategoryScores } from '@/core/engine/categories';
 import { BUNDLED_MODEL_DIR, cachedModelFileCount, MODEL_FILE_COUNT } from './model';
-import { BATCH_SIZE, ModelService, PHONE_BATCH_SIZE, type ServiceStatus } from './model-service';
+import { BATCH_SIZE, CACHE_LIMIT, ModelService, PHONE_BATCH_SIZE, PHONE_CACHE_LIMIT, type ServiceStatus } from './model-service';
 import { hostedModelCached, loadInPlaceClassifier } from './ort-classifier';
 import { loadToxicityClassifier } from './toxicity-classifier';
 
@@ -65,7 +65,7 @@ export function createModelService(extensionUrl: string, modelId: string, report
         if (p.status === 'progress_total') onPercent(Math.floor(p.progress));
       },
     });
-  }, report, isPhone() ? PHONE_BATCH_SIZE : BATCH_SIZE);
+  }, report, isPhone() ? PHONE_BATCH_SIZE : BATCH_SIZE, isPhone() ? PHONE_CACHE_LIMIT : CACHE_LIMIT);
 }
 
 /** Firefox for Android (also readable inside the model worker, which has no extension APIs). */

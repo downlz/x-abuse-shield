@@ -7,7 +7,9 @@ export const BATCH_SIZE = 8;
  * batches bring the first verdicts on screen sooner while scrolling.
  */
 export const PHONE_BATCH_SIZE = 4;
-const CACHE_LIMIT = 5000;
+/** Scores remembered by text (least recently used go first). Phones keep fewer: memory is the scarce part there. */
+export const CACHE_LIMIT = 5000;
+export const PHONE_CACHE_LIMIT = 1000;
 
 export type ServiceStatus =
   | { state: 'loading'; downloading: boolean; progress: number }
@@ -35,6 +37,7 @@ export class ModelService {
     private readonly loader: (report: (status: ServiceStatus) => void) => Promise<ToxicityClassifier>,
     private readonly report: (status: ServiceStatus) => void,
     private readonly batchSize = BATCH_SIZE,
+    private readonly cacheLimit = CACHE_LIMIT,
   ) {}
 
   ensureLoaded(): Promise<ToxicityClassifier> {
@@ -113,6 +116,6 @@ export class ModelService {
   private remember(text: string, scores: CategoryScores) {
     this.cache.delete(text);
     this.cache.set(text, scores);
-    if (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > this.cacheLimit) this.cache.delete(this.cache.keys().next().value!);
   }
 }

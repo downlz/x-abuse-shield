@@ -43,9 +43,9 @@ const fixtures = join(root, 'tests', 'fixtures');
  */
 const hosted = process.argv.includes('--hosted');
 
-/** --model=toxicity tests the toxicity model; the default is the DistilBERT model, like the extension. Phones always use the light toxicity model. */
+/** --model=toxicity tests the toxicity model; the default is the DistilBERT model, like the extension. Phones load its phone version. */
 const modelChoice = process.argv.includes('--model=toxicity') ? 'toxicity' : 'distilbert';
-const scoredAs = mobile ? 'toxicity' : modelChoice;
+const scoredAs = modelChoice;
 /** A post only the model catches (no word-list hit), and a clean one. */
 const MODEL_POSTS = {
   distilbert: ["You're a worthless idiot and everyone here knows it.", 'Just had the best biryani of my life, highly recommend this place'],
@@ -200,8 +200,9 @@ const browser = firefox
       browser: 'firefox',
       executablePath: process.env.FIREFOX_PATH ?? 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
       headless: true,
-      // Lets WebDriver BiDi open moz-extension:// pages.
+      // Lets WebDriver BiDi open moz-extension:// pages: the flag up to Firefox 158, the environment variable from 159.
       args: ['--remote-allow-system-access', ...(mobile ? [`--width=${PHONE.width}`, `--height=${PHONE.height}`] : [])],
+      env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' },
       defaultViewport: mobile ? PHONE : undefined,
       extraPrefsFirefox: {
         'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@downlz.github.io': FIREFOX_UUID }),

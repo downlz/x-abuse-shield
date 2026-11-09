@@ -15,7 +15,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, join, resolve } from 'node:path';
 import puppeteer from 'puppeteer';
-import { LITE_MODEL_ID, MODEL_IDS } from '../src/adapters/inference/model';
+import { MODEL_IDS, PHONE_MODEL_IDS } from '../src/adapters/inference/model';
 
 const root = join(import.meta.dirname, '..');
 const variants = process.argv.slice(2).filter((arg) => !arg.startsWith('--')).map((dir) => resolve(dir));
@@ -58,7 +58,9 @@ for (const variant of variants) {
     browser: 'firefox',
     executablePath: process.env.FIREFOX_PATH ?? 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
     headless: true,
+    // Lets WebDriver BiDi open moz-extension:// pages: the flag up to Firefox 158, the environment variable from 159.
     args: ['--remote-allow-system-access'],
+    env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' },
     extraPrefsFirefox: {
       'extensions.webextensions.uuids': JSON.stringify({ 'x-abuse-shield@downlz.github.io': UUID }),
       ...(phone ? { 'general.useragent.override': 'Mozilla/5.0 (Android 15; Mobile; rv:158.0) Gecko/158.0 Firefox/158.0' } : {}),
@@ -75,7 +77,7 @@ for (const variant of variants) {
     const started = Date.now();
     // The DistilBERT model's config has a `not-toxic` label; phones load the lite model whatever the choice.
     const choice = JSON.parse(readFileSync(join(variant, 'config.json'), 'utf8')).id2label[0] === 'not-toxic' ? 'distilbert' : 'toxicity';
-    const approvedSource = `http://localhost:${PORT}/#${phone ? LITE_MODEL_ID : MODEL_IDS[choice]}`;
+    const approvedSource = `http://localhost:${PORT}/#${(phone ? PHONE_MODEL_IDS : MODEL_IDS)[choice]}`;
     const model = { enabled: true, choice, downloadApproved: true, approvedSource, idleMinutes: 30, preBlur: false };
     await page.evaluate(`browser.storage.local.set({ settings: { model: ${JSON.stringify(model)} } })`);
     let state = '';

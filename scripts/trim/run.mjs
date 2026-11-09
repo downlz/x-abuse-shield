@@ -1,11 +1,14 @@
-// npm run model:trim — builds the phone model end to end:
+// npm run model:trim — builds a phone model end to end:
 //   Python environment (.venv-trim) → corpora (.cache/trim) → trim the vocabulary (checked: kept text
-//   tokenizes exactly as before) → [int8 layers] → .ort → public/models/<LITE_MODEL_ID>/
+//   tokenizes exactly as before) → [int8 layers] → .ort → public/models/<phone model id>/
 //
-//   npm run model:trim                 the phone model
-//   npm run model:trim -- analyze      tokens and coverage per language set
+//   npm run model:trim                          the toxicity phone model (LITE_MODEL_ID)
+//   npm run model:trim -- analyze               tokens and coverage per language set
+//   npm run model:trim -- distilbert            the DistilBERT phone model (DISTILBERT_LITE_MODEL_ID)
+//   npm run model:trim -- distilbert analyze    … its tokens and coverage
+//   npm run model:trim -- distilbert compare    … its scores against the original, kept and dropped languages
 //
-// Needs `npm run model:build` first (it downloads the original model into .cache/models) and Python 3.
+// Needs `npm run model:build` first (it downloads the original models into .cache/models) and Python 3.
 import { execFileSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,8 +19,12 @@ const root = join(import.meta.dirname, '..', '..');
 const venv = join(root, '.venv-trim');
 const python = join(venv, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const data = join(root, '.cache', 'trim');
-/** Languages kept in the phone model (analyze: Urdu and Bengali add only ~3,000 tokens). */
+/** Languages kept in the toxicity phone model (analyze: Urdu and Bengali add only ~3,000 tokens). */
 const LANGUAGES = 'english,hindi,hinglish,urdu,bengali';
+/** Languages kept in the DistilBERT phone model; other text skips it (MODEL_COVERAGE in src/adapters/inference/model.ts). */
+const DISTILBERT_LANGUAGES = 'english,hindi,hinglish';
+const distilbert = process.argv[2] === 'distilbert';
+const step = distilbert ? process.argv[3] : process.argv[2];
 /** The transformer layers are quantized to int8 too (docs/ANDROID.md, "Phone model"). */
 const INT8_LAYERS = true;
 const CORPORA = {
@@ -35,8 +42,11 @@ const run = (cmd, args) =>
     shell: cmd === 'npx' && process.platform === 'win32',
   });
 
-if (!existsSync(join(root, '.cache', 'models', 'Horizon-Labs', 'multilingual-toxicity-small', 'onnx', 'model_quantized.onnx'))) {
-  throw new Error('Run `npm run model:build` first: it downloads the original model.');
+const original = distilbert
+  ? join(root, '.cache', 'models', 'gravitee-io', 'distilbert-multilingual-toxicity-classifier', 'model.quant.onnx')
+  : join(root, '.cache', 'models', 'Horizon-Labs', 'multilingual-toxicity-small', 'onnx', 'model_quantized.onnx');
+if (!existsSync(original)) {
+  throw new Error(`Run \`npm run model:build${distilbert ? ' -- distilbert' : ''}\` first: it downloads the original model.`);
 }
 if (!existsSync(python)) {
   console.log('Creating .venv-trim…');
@@ -52,7 +62,18 @@ for (const [file, url] of Object.entries(CORPORA)) {
   await pipeline(Readable.fromWeb(response.body), createWriteStream(join(data, file)));
 }
 
-if (process.argv[2] === 'analyze') {
+if (distilbert) {
+  const script = join('scripts', 'trim', 'trim_wordpiece.py');
+  const trimmed = join(data, 'distilbert-lite');
+  if (step === 'analyze') run(python, ['-I', script, 'analyze']);
+  else if (step === 'compare') run(python, ['-I', script, 'compare', trimmed]);
+  else {
+    run('npx', ['tsx', join('scripts', 'trim', 'extra-texts.ts')]);
+    // The layers are int8 already (MatMulInteger), so there's no quantize step.
+    run(python, ['-I', script, 'build', '--languages', DISTILBERT_LANGUAGES, '--extra', join(data, 'extra.txt'), '--out', trimmed]);
+    run('npx', ['tsx', join('scripts', 'trim', 'to-ort.ts'), trimmed]);
+  }
+} else if (step === 'analyze') {
   run(python, ['-I', join('scripts', 'trim', 'trim_vocab.py'), 'analyze']);
 } else {
   run('npx', ['tsx', join('scripts', 'trim', 'extra-texts.ts')]);

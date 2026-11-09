@@ -18,7 +18,7 @@ plus word lists, and hides or blurs abusive posts and authors.
 - **Firefox without Add-ons** (e.g. testing a build): `x-abuse-shield-<version>.xpi` from the release, via `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…**. It's removed when Firefox quits; the Add-ons version is the one to keep.
 - The `.crx` is for computers where a policy allows the extension: Chrome on Windows and macOS doesn't install `.crx` files from outside the Chrome Web Store.
 
-Each release page has the full instructions and SHA-256 checksums. The extension is about 7 MB: the AI model is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup — about 140 MB on a computer (289 MB if you choose the 7-category Toxicity model in Settings), 93 MB on a phone (a lighter model for English, Hindi, Hinglish, Urdu and Bengali). The word lists work without it.
+Each release page has the full instructions and SHA-256 checksums. The extension is about 7 MB: the AI model is downloaded once, from [Hugging Face](https://huggingface.co/downlz/x-abuse-shield-model), when you turn it on in the popup — about 140 MB on a computer (289 MB if you choose the 7-category Toxicity model in Settings), 71 MB on a phone (a lighter DistilBERT for English, Hindi and Hinglish; 93 MB for the lighter Toxicity model, which adds Urdu and Bengali). The word lists work without it.
 
 ## Screenshots
 
@@ -105,7 +105,7 @@ What Abuse Shield doesn't do: it doesn't block accounts on X or bulk-import bloc
 
 ## Delivered recently
 
-- ✅ **A lighter default model and search filtering** (0.3.0): DistilBERT, a 140 MB download instead of 289 MB, with the 7-category Toxicity model still available in Settings; search results and hashtag pages are filtered too.
+- ✅ **A lighter default model and search filtering** (0.3.0): DistilBERT, a 140 MB download instead of 289 MB, with the 7-category Toxicity model still available in Settings; search results and hashtag pages are filtered too. Phones get a lighter DistilBERT trimmed to English, Hindi and Hinglish (71 MB, identical scores in those languages), and a long session's memory stays flat.
 - ✅ **Firefox for Android** (0.2.5): the same Firefox add-on on phones, with touch-sized controls, compact hidden-post panels with icon buttons (0.2.6) and x.com's phone layout. [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/x-abuse-shield/).
 - ✅ **A smaller, lighter model for phones** (0.2.5): the vocabulary trimmed to English, Hindi, Hinglish, Urdu and Bengali and the layers stored as 8-bit integers — a 93 MB download instead of 289 MB and about 330 MB of memory instead of about 630 MB. Scores in those five languages change for 0.5–1.8% of posts.
 

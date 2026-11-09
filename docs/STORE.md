@@ -18,7 +18,7 @@ Everything needed to publish on the Chrome Web Store and Firefox Add-ons (AMO). 
 npm run model:build    # → public/models/gravitee-io/distilbert-multilingual-toxicity-classifier/ and public/models/Horizon-Labs/multilingual-toxicity-small/
 ```
 
-Upload the contents of `public/models/`, **keeping the folder structure**: `gravitee-io/distilbert-multilingual-toxicity-classifier/` (6 files, ~140 MB, including `LICENSE` and `NOTICE.md`), `Horizon-Labs/multilingual-toxicity-small/` (5 files, ~289 MB) and `x-abuse-shield/multilingual-toxicity-lite/` (the phone model, `npm run model:trim`), to the host. On Hugging Face, the base URL is `https://huggingface.co/<you>/<repo>/resolve/main/`.
+Upload the contents of `public/models/`, **keeping the folder structure**: `gravitee-io/distilbert-multilingual-toxicity-classifier/` (6 files, ~140 MB, including `LICENSE` and `NOTICE.md`), `Horizon-Labs/multilingual-toxicity-small/` (5 files, ~289 MB) and the phone models `x-abuse-shield/distilbert-toxicity-lite/` (~71 MB, OpenRAIL++, `npm run model:trim -- distilbert`) and `x-abuse-shield/multilingual-toxicity-lite/` (`npm run model:trim`), to the host. On Hugging Face, the base URL is `https://huggingface.co/<you>/<repo>/resolve/main/`.
 
 Check it: `https://huggingface.co/<you>/<repo>/resolve/main/Horizon-Labs/multilingual-toxicity-small/config.json` should download.
 
