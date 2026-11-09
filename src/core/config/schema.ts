@@ -68,9 +68,7 @@ export interface Settings {
   model: {
     /** Score posts with the on-device AI model. */
     enabled: boolean;
-    /** Which model: DistilBERT (default) or toxicity. Phones use the light toxicity model either way. */
-    choice: 'distilbert' | 'toxicity';
-    /** The user agreed to the one-time download of the chosen model (approvedSource says which). */
+    /** The user agreed to the one-time model download (~289 MB). */
     downloadApproved: boolean;
     /** Which model source that approval was for (MODEL_SOURCE): an update that changes it asks again. */
     approvedSource: string;

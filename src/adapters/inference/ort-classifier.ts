@@ -5,9 +5,10 @@
  */
 import { AutoTokenizer, env, type Tensor } from '@huggingface/transformers';
 import * as ort from 'onnxruntime-web/webgpu';
-import { BUNDLED_MODEL_FILE, IN_PLACE_SESSION_OPTIONS, MAX_TOKENS, maxBatch, MODEL_ID } from './model';
+import type { CategoryScores } from '@/core/engine/categories';
+import { BUNDLED_MODEL_FILE, IN_PLACE_SESSION_OPTIONS, MAX_TOKENS, MODEL_ID } from './model';
 import { readBytes } from './read-bytes';
-import { chunks, configureWebRuntime, scoreMapper, type ClassifierConfig, type ToxicityClassifier } from './toxicity-classifier';
+import { configureWebRuntime, labelOrder, type ToxicityClassifier } from './toxicity-classifier';
 
 /** Cache API bucket for a hosted .ort model (the tokenizer goes in Transformers.js's own cache). */
 export const IN_PLACE_CACHE = 'x-abuse-shield-model';
@@ -50,26 +51,27 @@ export async function loadInPlaceClassifier(options: InPlaceOptions): Promise<To
     options.remote ? readCached(`${base}${file}`, onProgress) : readBytes(`${base}${file}`, onProgress);
   const [tokenizer, config, session] = await Promise.all([
     AutoTokenizer.from_pretrained(modelId),
-    read('config.json').then((bytes) => JSON.parse(new TextDecoder().decode(bytes)) as ClassifierConfig),
+    read('config.json').then((bytes) => JSON.parse(new TextDecoder().decode(bytes)) as { id2label: Record<string, string> }),
     // The JS copy of the bytes is dropped once ONNX Runtime has them in WebAssembly memory.
     read(BUNDLED_MODEL_FILE, options.onProgress).then((bytes) => ort.InferenceSession.create(bytes, IN_PLACE_SESSION_OPTIONS)),
   ]);
-  const toScores = scoreMapper(config);
+  const order = labelOrder(config.id2label);
 
   return {
     async classify(texts) {
-      const scores = [];
-      for (const group of chunks(texts, maxBatch(modelId))) {
-        const inputs = tokenizer(group, { padding: true, truncation: true, max_length: MAX_TOKENS });
-        const { logits } = await session.run({
-          input_ids: toOrt(inputs.input_ids as Tensor),
-          attention_mask: toOrt(inputs.attention_mask as Tensor),
-        });
-        const data = logits!.data as Float32Array;
-        const width = Number(logits!.dims[1]);
-        for (let row = 0; row < group.length; row++) scores.push(toScores(Array.from(data.subarray(row * width, (row + 1) * width))));
-      }
-      return scores;
+      if (texts.length === 0) return [];
+      const inputs = tokenizer(texts, { padding: true, truncation: true, max_length: MAX_TOKENS });
+      const { logits } = await session.run({
+        input_ids: toOrt(inputs.input_ids as Tensor),
+        attention_mask: toOrt(inputs.attention_mask as Tensor),
+      });
+      const data = logits!.data as Float32Array;
+      const width = Number(logits!.dims[1]);
+      return texts.map((_, row) => {
+        const scores = {} as CategoryScores;
+        order.forEach((category, i) => (scores[category] = 1 / (1 + Math.exp(-data[row * width + i]!))));
+        return scores;
+      });
     },
     async dispose() {
       await session.release();

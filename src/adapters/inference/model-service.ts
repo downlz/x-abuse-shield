@@ -55,13 +55,6 @@ export class ModelService {
     return this.classifier;
   }
 
-  /** Frees the model (when the user switches to another one). */
-  async dispose(): Promise<void> {
-    const classifier = this.classifier;
-    this.classifier = null;
-    await (await classifier?.catch(() => null))?.dispose();
-  }
-
   classify(texts: string[]): Promise<CategoryScores[]> {
     const fresh: Job[] = [];
     const results = texts.map((text) => {

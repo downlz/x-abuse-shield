@@ -1,13 +1,8 @@
 // Scores labelled posts with the word lists and the AI model (onnxruntime-node,
 // same model files as the extension), applies each preset, and writes
-// docs/CALIBRATION.md (toxicity model) or docs/CALIBRATION-distilbert.md (DistilBERT model).
-// Data format: calibration/README.md.
-//
-//   npm run calibrate                     the toxicity model
-//   npm run calibrate -- --model distilbert   the DistilBERT model
+// docs/CALIBRATION.md. Data format: calibration/README.md.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MODEL_IDS, type ModelChoice } from '../src/adapters/inference/model';
 import { loadToxicityClassifier } from '../src/adapters/inference/toxicity-classifier';
 import { DEFAULT_SETTINGS } from '../src/core/config/defaults';
 import { CATEGORIES, type Category, type CategoryScores } from '../src/core/engine/categories';
@@ -58,8 +53,7 @@ for (const [file, label] of sources) {
 }
 
 const lexicon = new Lexicon({ languages: { en: true, hi: true, hinglish: true, emoji: true }, customBlock: [], customAllow: [] });
-const choice: ModelChoice = process.argv.includes('--model') && process.argv[process.argv.indexOf('--model') + 1] === 'distilbert' ? 'distilbert' : 'toxicity';
-const classifier = await loadToxicityClassifier({ cacheDir: join(root, '.cache', 'models'), modelId: MODEL_IDS[choice] });
+const classifier = await loadToxicityClassifier({ cacheDir: join(root, '.cache', 'models') });
 const modelScores: CategoryScores[] = [];
 for (let i = 0; i < posts.length; i += 8) modelScores.push(...(await classifier.classify(posts.slice(i, i + 8).map((p) => p.text))));
 await classifier.dispose();
@@ -152,12 +146,9 @@ const short = (text: string) => text.replace(/\s+/g, ' ').replace(/\|/g, '\\|').
 const lines: string[] = [];
 const push = (...l: string[]) => lines.push(...l);
 push(
-  `# Calibration report — ${choice === 'distilbert' ? 'DistilBERT' : 'toxicity'} model`,
+  '# Calibration report',
   '',
-  `Generated ${new Date().toISOString().slice(0, 10)} by \`npm run calibrate${choice === 'distilbert' ? ' -- --model distilbert' : ''}\` with \`${MODEL_IDS[choice]}\`. ${posts.length} labelled posts: ${loaded.join(', ')}.`,
-  ...(choice === 'distilbert'
-    ? ['', 'The DistilBERT model gives one toxic / not-toxic score, read as toxicity; its other categories are 0.']
-    : []),
+  `Generated ${new Date().toISOString().slice(0, 10)} by \`npm run calibrate\`. ${posts.length} labelled posts: ${loaded.join(', ')}.`,
   '',
   'Cells show **abusive posts caught / abusive** · **clean posts flagged / clean**.',
   '',
@@ -227,5 +218,5 @@ for (const s of scored) {
 }
 
 const markdown = `${lines.join('\n')}\n`;
-writeFileSync(join(root, 'docs', choice === 'distilbert' ? 'CALIBRATION-distilbert.md' : 'CALIBRATION.md'), markdown);
+writeFileSync(join(root, 'docs', 'CALIBRATION.md'), markdown);
 console.log(markdown);

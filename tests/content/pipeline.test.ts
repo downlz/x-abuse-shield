@@ -10,7 +10,6 @@ import type { MuteState, Strike } from '@/core/mute/mutes';
 import type { ReviewEntry } from '@/core/review/log';
 import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
 import type { TabHealth } from '@/shared/health';
-import { approvalKey } from '@/shared/model-status';
 import { loadHtmlFixture, loadJsonFixture } from '../helpers';
 
 const NOW = Date.parse('2026-10-23T15:00:00Z');
@@ -76,7 +75,7 @@ function deferredModel(score: (text: string) => CategoryScores | null) {
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
-const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true, approvedSource: approvalKey(DEFAULT_SETTINGS.model.choice) } };
+const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true } };
 
 /** postId → data-xas action, or null when untouched. */
 function treatments(): Record<string, string | null> {
