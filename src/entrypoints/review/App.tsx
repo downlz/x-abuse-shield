@@ -14,6 +14,7 @@ const CONTEXT_LABELS: Record<string, string> = {
   following: 'Following',
   thread: 'Replies',
   notifications: 'Notifications',
+  search: 'Search',
   manual: 'Added by you',
 };
 

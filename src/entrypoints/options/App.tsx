@@ -138,6 +138,8 @@ const CATEGORY_INFO: { key: Category; name: string; hint: string }[] = [
   { key: 'sexual_explicit', name: 'Sexual content', hint: 'sexually explicit language' },
 ];
 
+const isPhone = /Android/i.test(navigator.userAgent);
+
 function AiModel({ settings, update }: { settings: Settings; update: Update }) {
   const thresholds = activeThresholds(settings);
   const setModel = (patch: Partial<Settings['model']>) => update((s) => ({ ...s, model: { ...s.model, ...patch } }));
@@ -146,6 +148,27 @@ function AiModel({ settings, update }: { settings: Settings; update: Update }) {
   return (
     <section className="card">
       <h2>AI model</h2>
+      <div className="field">
+        <span>Model</span>
+        <Segmented
+          label="Model"
+          value={settings.model.choice}
+          options={[
+            { value: 'distilbert', label: 'DistilBERT' },
+            { value: 'toxicity', label: 'Toxicity' },
+          ]}
+          onChange={(choice) => setModel({ choice })}
+        />
+      </div>
+      <p className="hint">
+        {settings.model.choice === 'distilbert'
+          ? 'DistilBERT (smaller, faster): one toxic / not-toxic verdict in 15 languages including Hindi and Hinglish. It scores posts as “Toxicity” below; the other categories are left to the word lists.'
+          : 'Toxicity (the original model): insults, threats, obscenity and identity attacks, in 34 languages.'}
+        {isPhone &&
+          (settings.model.choice === 'distilbert'
+            ? ' On phones, a lighter DistilBERT for English, Hindi and Hinglish; posts in other languages are left to the word lists.'
+            : ' On phones, a lighter version for English, Hindi, Hinglish, Urdu and Bengali.')}
+      </p>
       <ModelCard settings={settings} update={update} heading="Status" />
       <Check checked={settings.model.enabled} onChange={(enabled) => setModel({ enabled })}>
         Use the AI model
@@ -225,6 +248,7 @@ function Scopes({ settings, update }: { settings: Settings; update: Update }) {
       <Check checked={settings.scopes.following} onChange={set('following')}>Home · Following</Check>
       <Check checked={settings.scopes.replies} onChange={set('replies')}>Replies when you open a post</Check>
       <Check checked={settings.scopes.notifications} onChange={set('notifications')}>Notifications</Check>
+      <Check checked={settings.scopes.search} onChange={set('search')}>Search results</Check>
       <Check checked={settings.scopes.focalPost} onChange={set('focalPost')} hint="you clicked on it, so it's shown by default">
         The opened post itself
       </Check>

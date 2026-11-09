@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BATCH_SIZE, ModelService, type ServiceStatus } from '@/adapters/inference/model-service';
-import type { ToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
+import { chunks, scoreMapper, type ToxicityClassifier } from '@/adapters/inference/toxicity-classifier';
 import type { CategoryScores } from '@/core/engine/categories';
 
 const scoreFor = (text: string): CategoryScores => ({
@@ -75,5 +75,40 @@ describe('ModelService', () => {
     await expect(svc.classify(['x'])).rejects.toThrow('network down');
     expect(statuses.at(-1)).toEqual({ state: 'error', message: 'network down' });
     await expect(svc.classify(['x'])).resolves.toHaveLength(1);
+  });
+});
+
+describe('scoreMapper', () => {
+  const logit = (p: number) => Math.log(p / (1 - p));
+
+  it('reads the toxicity model’s labels as the categories, each its own sigmoid', () => {
+    const map = scoreMapper({ id2label: { 0: 'toxicity', 1: 'severe_toxicity', 2: 'obscene', 3: 'threat', 4: 'insult', 5: 'identity_attack', 6: 'sexual_explicit' } });
+    const scores = map([0.9, 0.1, 0.2, 0.3, 0.8, 0.05, 0.01].map(logit));
+    expect(scores.toxicity).toBeCloseTo(0.9);
+    expect(scores.insult).toBeCloseTo(0.8);
+    expect(scores.identity_attack).toBeCloseTo(0.05);
+  });
+
+  it('turns the DistilBERT model’s softmax toxic probability into toxicity, nothing else', () => {
+    const map = scoreMapper({ id2label: { 0: 'not-toxic', 1: 'toxic' }, problem_type: 'single_label_classification' });
+    const scores = map([-1.2, 2.3]);
+    expect(scores.toxicity).toBeCloseTo(Math.exp(2.3) / (Math.exp(-1.2) + Math.exp(2.3)));
+    expect({ ...scores, toxicity: 0 }).toEqual({
+      toxicity: 0, severe_toxicity: 0, obscene: 0, threat: 0, insult: 0, identity_attack: 0, sexual_explicit: 0,
+    });
+    expect(map([3, -3]).toxicity).toBeLessThan(0.01);
+  });
+
+  it('fails loudly on unknown labels', () => {
+    expect(() => scoreMapper({ id2label: { 0: 'positive', 1: 'negative' } })).toThrow(/Unexpected model labels/);
+  });
+});
+
+describe('chunks', () => {
+  it('splits texts into model calls of at most the model’s batch size', () => {
+    expect(chunks(['a', 'b', 'c'], 1)).toEqual([['a'], ['b'], ['c']]);
+    expect(chunks(['a', 'b', 'c'], 2)).toEqual([['a', 'b'], ['c']]);
+    expect(chunks(['a', 'b', 'c'], Infinity)).toEqual([['a', 'b', 'c']]);
+    expect(chunks([], 1)).toEqual([]);
   });
 });

@@ -28,6 +28,15 @@ interface Group {
 export const NEAR_DUPLICATE_BITS = 12;
 
 /**
+ * A tab stays open for hours and nearly every post starts its own group, so groups are capped: the least
+ * recently active go first. Every new post is compared with every group's fingerprints, so the cap also
+ * keeps that check from slowing down as the session goes on. A brigade needs only minAuthors copies
+ * within minutes; the newest copies of a group are the ones kept.
+ */
+export const MAX_GROUPS = 2000;
+export const MAX_COPIES_PER_GROUP = 100;
+
+/**
  * Groups posts with the same or near-identical fingerprints and reports
  * copy-paste clusters: at least `minAuthors` distinct authors posting within
  * `windowMinutes`. Only sees posts loaded in this tab.
@@ -54,14 +63,36 @@ export class CopyTracker {
           group = { keys: new Set(), hashes: [], copies: [] };
           this.groups.push(group);
         }
-        group.keys.add(key);
-        group.hashes.push(hash);
-        this.groupOfKey.set(key, group);
+        if (group.hashes.length < MAX_COPIES_PER_GROUP) {
+          group.keys.add(key);
+          group.hashes.push(hash);
+          this.groupOfKey.set(key, group);
+        }
       }
       group.copies.push(copy);
       this.groupOfPost.set(copy.postId, group);
+      if (group.copies.length > MAX_COPIES_PER_GROUP) this.groupOfPost.delete(group.copies.shift()!.postId);
+      this.touch(group);
     }
     return this.clusterOf(copy.postId);
+  }
+
+  groupCount(): number {
+    return this.groups.length;
+  }
+
+  /** Marks a group as the most recently active, and forgets the least recently active past MAX_GROUPS. */
+  private touch(group: Group): void {
+    const at = this.groups.lastIndexOf(group);
+    if (at !== this.groups.length - 1) {
+      this.groups.splice(at, 1);
+      this.groups.push(group);
+    }
+    while (this.groups.length > MAX_GROUPS) {
+      const old = this.groups.shift()!;
+      for (const key of old.keys) if (this.groupOfKey.get(key) === old) this.groupOfKey.delete(key);
+      for (const c of old.copies) if (this.groupOfPost.get(c.postId) === old) this.groupOfPost.delete(c.postId);
+    }
   }
 
   clusterOf(postId: string): string[] {

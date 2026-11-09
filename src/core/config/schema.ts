@@ -27,6 +27,8 @@ export interface Settings {
     following: boolean;
     replies: boolean;
     notifications: boolean;
+    /** Search results and hashtag pages, every tab (Top, Latest, Media…). */
+    search: boolean;
     /** The post opened on its own page. */
     focalPost: boolean;
   };
@@ -66,7 +68,9 @@ export interface Settings {
   model: {
     /** Score posts with the on-device AI model. */
     enabled: boolean;
-    /** The user agreed to the one-time model download (~289 MB). */
+    /** Which model: DistilBERT (default) or toxicity. Phones use the light toxicity model either way. */
+    choice: 'distilbert' | 'toxicity';
+    /** The user agreed to the one-time download of the chosen model (approvedSource says which). */
     downloadApproved: boolean;
     /** Which model source that approval was for (MODEL_SOURCE): an update that changes it asks again. */
     approvedSource: string;

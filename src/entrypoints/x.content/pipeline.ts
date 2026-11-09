@@ -15,6 +15,9 @@ import { extractPost, quoteCard, type DomPost } from '@/adapters/x-dom/extract';
 import { isOwnNode, render, syncTheme, type Treatment } from '@/adapters/x-dom/render';
 import { X } from '@/adapters/x-dom/selectors';
 import type { TabHealth } from '@/shared/health';
+import { BoundedMap, BoundedSet } from '@/shared/bounded';
+import { modelReads } from '@/shared/model-coverage';
+import { activeModelId, modelApproved } from '@/shared/model-status';
 
 export interface PipelineDeps {
   doc: Document;
@@ -32,6 +35,24 @@ export interface PipelineDeps {
 
 /** Collects posts for ~one frame before asking the model, so a timeline page goes in one request. */
 const MODEL_FLUSH_MS = 30;
+
+/**
+ * What a tab remembers is capped (BoundedMap/BoundedSet): x.com is one page that stays open for hours, and
+ * every post, account and text seen used to be kept until the tab closed. The caps are far above what one
+ * screen needs; forgetting an old entry only means working it out again if that post comes back.
+ */
+const POST_MEMORY = 3000;
+const ACCOUNT_MEMORY = 3000;
+const TEXT_MEMORY = 2000;
+/** Posts already reported to the background (which also ignores repeats). */
+const REPORTED_MEMORY = 5000;
+/** Look for posts X has taken off the page once this many are remembered, then at twice what's left. */
+const ARTICLE_PRUNE_MIN = 300;
+/**
+ * The model reads the first 256 tokens; 4,000 characters is well past that. Long posts (up to 25,000
+ * characters) are cut to this before they're sent or kept as cache keys.
+ */
+export const MODEL_TEXT_CHARS = 4000;
 
 interface Evaluation {
   /** Lowercase author handle. */
@@ -78,23 +99,26 @@ export class ContentPipeline {
   private lexiconKey = '';
   private muteState: MuteState;
   private readonly tracker: CopyTracker;
-  private readonly accounts = new Map<string, AccountRecord>();
-  private readonly apiPosts = new Map<string, PostRecord>();
-  private readonly evaluations = new Map<string, Evaluation>();
+  private readonly accounts = new BoundedMap<string, AccountRecord>(ACCOUNT_MEMORY);
+  private readonly apiPosts = new BoundedMap<string, PostRecord>(POST_MEMORY);
+  private readonly evaluations = new BoundedMap<string, Evaluation>(POST_MEMORY);
+  /** Each post's element while it's on the page. X removes posts scrolled far away; those are dropped (pruneArticles). */
   private readonly articles = new Map<string, Element>();
-  private readonly revealed = new Set<string>();
-  private readonly reported = new Set<string>();
+  private articlePruneAt = ARTICLE_PRUNE_MIN;
+  private readonly revealed = new BoundedSet<string>(POST_MEMORY);
+  private readonly reported = new BoundedSet<string>(REPORTED_MEMORY);
   /** Posts you marked "not abusive". */
   private notAbusive = new Set<string>();
   private me: string | undefined;
   private observer: MutationObserver | null = null;
   private stats = { articles: 0, extracted: 0, evaluated: 0, withRecord: 0, users: 0, incompleteUsers: 0 };
   private lastHealth = '';
-  /** Model scores by post text (the same text can appear under several post ids). */
-  private readonly modelScores = new Map<string, CategoryScores>();
+  /** Model scores by post text (the same text can appear under several post ids), cut to MODEL_TEXT_CHARS. */
+  private readonly modelScores = new BoundedMap<string, CategoryScores>(TEXT_MEMORY);
+  /** Posts waiting for a text's score; cleared when it arrives. */
   private readonly postsByText = new Map<string, Set<string>>();
   private readonly modelPending = new Set<string>();
-  private readonly modelFailed = new Set<string>();
+  private readonly modelFailed = new BoundedSet<string>(TEXT_MEMORY);
   private modelQueue: string[] = [];
   private modelFlush: ReturnType<typeof setTimeout> | null = null;
   /** The model is off or not approved; stop asking until settings change. */
@@ -136,6 +160,8 @@ export class ContentPipeline {
   }
 
   updateSettings(settings: Settings): void {
+    // Scores from the other model don't apply to this one.
+    if (settings.model.choice !== this.settings.model.choice) this.modelScores.clear();
     this.applySettings(settings);
     this.evaluations.clear();
     this.modelOff = false;
@@ -201,7 +227,32 @@ export class ContentPipeline {
     this.me ??= ownHandle(this.deps.doc);
     syncTheme(this.deps.doc);
     for (const article of articles) this.processOne(article, context, focalId);
+    this.pruneArticles();
     this.reportHealth();
+  }
+
+  /**
+   * Forgets elements X has removed from the page. Keeping them would keep each removed post's whole DOM
+   * tree (text, images, our placeholder) alive for as long as the tab is open.
+   */
+  private pruneArticles(): void {
+    if (this.articles.size < this.articlePruneAt) return;
+    for (const [id, article] of this.articles) if (!article.isConnected) this.articles.delete(id);
+    this.articlePruneAt = Math.max(ARTICLE_PRUNE_MIN, this.articles.size * 2);
+  }
+
+  /** How many entries each cache holds (tests, and a check that a long session stays bounded). */
+  memoryStats(): Record<string, number> {
+    return {
+      articles: this.articles.size,
+      evaluations: this.evaluations.size,
+      apiPosts: this.apiPosts.size,
+      accounts: this.accounts.size,
+      modelScores: this.modelScores.size,
+      postsByText: this.postsByText.size,
+      reported: this.reported.size,
+      copyGroups: this.tracker.groupCount(),
+    };
   }
 
   private processOne(article: Element, context: PageContext, focalId: string | undefined): void {
@@ -288,7 +339,8 @@ export class ContentPipeline {
       if (key) cluster = this.tracker.add(key, { postId: post.id, author: handle, postedAt });
     }
     const copyOfFlagged = cluster.some((id) => id !== post.id && this.evaluations.get(id)?.ownFlag);
-    const model = this.modelScores.get(text);
+    const modelText = text.slice(0, MODEL_TEXT_CHARS);
+    const model = this.modelScores.get(modelText);
 
     const verdict = decide(
       {
@@ -315,7 +367,7 @@ export class ContentPipeline {
     if (verdict.flagged && directed && assessment.level !== 'low') verdict.reasons.push(...assessment.reasons);
 
     // Posts the word lists already settled don't need the model.
-    const awaitingModel = !model && !ownFlag && this.requestModel(text, post.id);
+    const awaitingModel = !model && !ownFlag && this.requestModel(modelText, post.id, lang, match.hinglish);
 
     const entry: Omit<ReviewEntry, 'at'> = {
       postId: post.id,
@@ -406,10 +458,12 @@ export class ContentPipeline {
   }
 
   /** Queues a text for the model. Returns whether scores are on their way. */
-  private requestModel(text: string, postId: string): boolean {
+  private requestModel(text: string, postId: string, lang: string | undefined, hinglish: boolean): boolean {
     const { model } = this.settings;
-    if (!this.deps.classify || !model.enabled || !model.downloadApproved || this.modelOff) return false;
+    if (!this.deps.classify || !model.enabled || !modelApproved(model) || this.modelOff) return false;
     if (text.trim().length < 2 || this.modelFailed.has(text)) return false;
+    // The phone DistilBERT model only reads English, Hindi and Hinglish; other posts get the word lists alone.
+    if (!modelReads(activeModelId(model.choice), text, lang, hinglish)) return false;
     let posts = this.postsByText.get(text);
     if (!posts) this.postsByText.set(text, (posts = new Set()));
     posts.add(postId);
@@ -426,8 +480,12 @@ export class ContentPipeline {
     const texts = this.modelQueue.splice(0);
     if (texts.length === 0 || !this.deps.classify) return;
     const done = () => {
-      texts.forEach((text) => this.modelPending.delete(text));
-      this.reevaluate(texts.flatMap((text) => [...(this.postsByText.get(text) ?? [])]));
+      const waiting = texts.flatMap((text) => [...(this.postsByText.get(text) ?? [])]);
+      texts.forEach((text) => {
+        this.modelPending.delete(text);
+        this.postsByText.delete(text);
+      });
+      this.reevaluate(waiting);
     };
     this.deps.classify(texts).then(
       (scores) => {
@@ -463,6 +521,8 @@ export class ContentPipeline {
         return isFocal ? scopes.focalPost : scopes.replies;
       case 'notifications':
         return scopes.notifications;
+      case 'search':
+        return scopes.search;
       default:
         return false;
     }

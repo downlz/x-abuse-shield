@@ -1,6 +1,6 @@
-# Calibration report
+# Calibration report — toxicity model
 
-Generated 2026-10-23 by `npm run calibrate`. 68 labelled posts: 54 Phase 0 samples (`spike/samples.json`), 14 real posts from screenshots (`calibration/screenshots.jsonl`).
+Generated 2026-10-27 by `npm run calibrate` with `Horizon-Labs/multilingual-toxicity-small`. 68 labelled posts: 54 Phase 0 samples (`spike/samples.json`), 14 real posts from screenshots (`calibration/screenshots.jsonl`).
 
 Cells show **abusive posts caught / abusive** · **clean posts flagged / clean**.
 

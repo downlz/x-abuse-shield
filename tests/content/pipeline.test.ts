@@ -10,6 +10,7 @@ import type { MuteState, Strike } from '@/core/mute/mutes';
 import type { ReviewEntry } from '@/core/review/log';
 import { ContentPipeline } from '@/entrypoints/x.content/pipeline';
 import type { TabHealth } from '@/shared/health';
+import { approvalKey } from '@/shared/model-status';
 import { loadHtmlFixture, loadJsonFixture } from '../helpers';
 
 const NOW = Date.parse('2026-10-23T15:00:00Z');
@@ -75,7 +76,7 @@ function deferredModel(score: (text: string) => CategoryScores | null) {
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
-const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true } };
+const modelOn = { model: { ...DEFAULT_SETTINGS.model, downloadApproved: true, approvedSource: approvalKey(DEFAULT_SETTINGS.model.choice) } };
 
 /** postId → data-xas action, or null when untouched. */
 function treatments(): Record<string, string | null> {
@@ -133,6 +134,20 @@ describe('home · For you', () => {
     loadHtmlFixture('synthetic-home-for-you.html');
     document.querySelectorAll('[role="tab"]').forEach((tab, i) => tab.setAttribute('aria-selected', String(i === 1)));
     setup('/home', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, following: false } } }).pipeline.attach();
+    expect(treatments()['2002']).toBeNull();
+  });
+
+  it('filters search results and hashtag pages under their own switch, on by default', () => {
+    expect(DEFAULT_SETTINGS.scopes.search).toBe(true);
+    setup('/search').pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/hashtag/cricket').pipeline.attach();
+    expect(treatments()['2002']).toBe('blur');
+
+    loadHtmlFixture('synthetic-home-for-you.html');
+    setup('/search', { settings: { scopes: { ...DEFAULT_SETTINGS.scopes, search: false } } }).pipeline.attach();
     expect(treatments()['2002']).toBeNull();
   });
 
@@ -221,6 +236,59 @@ describe('notifications', () => {
     pipeline.addRecords({ ...collectRecords(loadJsonFixture('notifications.rest.json')), operation: 'mentions' });
     pipeline.attach();
     expect(treatments()).toEqual({ '4001': 'collapse', '4002': null, '4003': 'blur' });
+  });
+});
+
+describe('long sessions', () => {
+  // Distinct made-up words per post, so posts don't look like one giant copy-paste brigade.
+  const SYLLABLES = ['ka', 'ri', 'to', 'mu', 'sen', 'dal', 'pra', 'vin', 'lo', 'che', 'nam', 'gu', 'ta', 'be', 'sho', 'ra'];
+  const word = (x: number) => SYLLABLES[x % 16]! + SYLLABLES[(x >> 4) % 16]! + SYLLABLES[(x >> 8) % 16]!;
+  const textOf = (n: number) => {
+    let seed = (n * 2654435761) >>> 0;
+    return Array.from({ length: 9 }, () => word((seed = (seed * 1103515245 + 12345) >>> 0) >>> 8)).join(' ');
+  };
+
+  it('keeps what a tab remembers bounded while X adds posts and removes them as you scroll', async () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    const cell = [...document.querySelectorAll('[data-testid="cellInnerDiv"]')].find((c) => c.innerHTML.includes('/status/2002'))!;
+    const template = cell.outerHTML;
+    const timeline = cell.parentElement!;
+    const { pipeline } = setup('/home', { settings: modelOn, classify: async (texts) => texts.map(() => scores()) });
+
+    const CHUNK = 700;
+    for (let chunk = 0; chunk < 6; chunk++) {
+      const added: Element[] = [];
+      for (let i = 0; i < CHUNK; i++) {
+        const n = chunk * CHUNK + i;
+        timeline.insertAdjacentHTML(
+          'beforeend',
+          template.replaceAll('2002', String(500000 + n)).replaceAll('Srihars47664037', `walker_${n}`).replace('Chutiya fellow posting useless', textOf(n)),
+        );
+        added.push(timeline.lastElementChild!.querySelector('article')!);
+      }
+      pipeline.process(added);
+      await settle();
+      // X's timeline is virtualised: posts scrolled far away leave the page.
+      added.forEach((article) => article.closest('[data-testid="cellInnerDiv"]')!.remove());
+    }
+    pipeline.process([]);
+
+    const stats = pipeline.memoryStats();
+    expect(stats.evaluations).toBeLessThanOrEqual(3000);
+    expect(stats.modelScores).toBeLessThanOrEqual(2000);
+    expect(stats.postsByText).toBe(0);
+    expect(stats.copyGroups).toBeLessThanOrEqual(2000);
+    // Removed posts' elements are let go (at most twice what was last on the page is held).
+    expect(stats.articles).toBeLessThanOrEqual(2 * CHUNK);
+  }, 30_000);
+
+  it('cuts long posts before they reach the model', async () => {
+    loadHtmlFixture('synthetic-home-for-you.html');
+    document.querySelector('a[href$="/status/2001"]')!.closest('article')!.querySelector('[data-testid="tweetText"] span')!.textContent = 'lovely '.repeat(3000);
+    const seen: string[] = [];
+    setup('/home', { settings: modelOn, classify: async (texts) => (seen.push(...texts), texts.map(() => scores())) }).pipeline.attach();
+    await settle();
+    expect(Math.max(...seen.map((t) => t.length))).toBeLessThanOrEqual(4000);
   });
 });
 

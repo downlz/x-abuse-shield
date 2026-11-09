@@ -14,7 +14,7 @@ export interface ReviewEntry {
   /** When it was hidden. */
   at: number;
   postedAt?: number;
-  /** Where it was seen: for-you, following, thread, notifications; 'manual' for posts you added. */
+  /** Where it was seen: for-you, following, thread, notifications, search; 'manual' for posts you added. */
   context: string;
   directed: boolean;
   lang?: string;

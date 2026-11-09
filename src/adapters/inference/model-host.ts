@@ -6,7 +6,7 @@
 import { loadSettings } from '@/adapters/storage/extension-storage';
 import type { Settings } from '@/core/config/schema';
 import type { ScoreReply } from '@/shared/messages';
-import { MODEL_LAST_USED_KEY, MODEL_STATUS_KEY, type ModelStatus } from '@/shared/model-status';
+import { activeModelId, MODEL_LAST_USED_KEY, MODEL_STATUS_KEY, modelApproved, type ModelStatus } from '@/shared/model-status';
 import type { ModelRunner } from './model-runner';
 import { offscreenRunner } from './offscreen-host';
 import { createWorkerRunner } from './worker-host';
@@ -28,26 +28,26 @@ export async function reportStatus(status: ModelStatus): Promise<void> {
 /** Status while the model isn't in memory. */
 export function restingStatus(settings: Settings): ModelStatus {
   if (!settings.model.enabled) return { state: 'off' };
-  if (!settings.model.downloadApproved) return { state: 'needs-download' };
+  if (!modelApproved(settings.model)) return { state: 'needs-download' };
   return { state: 'unloaded' };
 }
 
 export function modelAllowed(settings: Settings): boolean {
-  return settings.model.enabled && settings.model.downloadApproved;
+  return settings.model.enabled && modelApproved(settings.model);
 }
 
 export async function scoreTexts(texts: string[], settings: Settings): Promise<ScoreReply> {
   if (!modelAllowed(settings)) return { ok: false, error: 'off' };
   await touch();
-  const reply = await runner.classify(texts);
+  const reply = await runner.classify(texts, activeModelId(settings.model.choice));
   await touch();
   return reply;
 }
 
 /** Starts loading (or downloading) now, e.g. right after the user approves the download. */
-export async function preload(): Promise<void> {
+export async function preload(settings: Settings): Promise<void> {
   await touch();
-  await runner.load();
+  await runner.load(activeModelId(settings.model.choice));
 }
 
 export async function unload(settings: Settings): Promise<void> {

@@ -3,15 +3,40 @@
  * or hosted in-place .ort model, or the original .onnx from Hugging Face.
  * Runs in Chrome's offscreen document and in Firefox's model worker.
  */
-import { BUNDLED_MODEL_DIR, cachedModelFileCount, LITE_MODEL_ID, MODEL_FILE_COUNT, MODEL_ID } from './model';
-import { BATCH_SIZE, ModelService, PHONE_BATCH_SIZE, type ServiceStatus } from './model-service';
+import type { CategoryScores } from '@/core/engine/categories';
+import { BUNDLED_MODEL_DIR, cachedModelFileCount, MODEL_FILE_COUNT } from './model';
+import { BATCH_SIZE, CACHE_LIMIT, ModelService, PHONE_BATCH_SIZE, PHONE_CACHE_LIMIT, type ServiceStatus } from './model-service';
 import { hostedModelCached, loadInPlaceClassifier } from './ort-classifier';
 import { loadToxicityClassifier } from './toxicity-classifier';
 
 /** Reports in steps, so a 300 MB download doesn't flood the background with messages. */
 const PROGRESS_STEP = 5;
 
-export function createModelService(extensionUrl: string, report: (status: ServiceStatus) => void): ModelService {
+export interface ModelRuntime {
+  load(modelId: string): Promise<unknown>;
+  classify(texts: string[], modelId: string): Promise<CategoryScores[]>;
+}
+
+/**
+ * Serves whichever model the background asks for (the background resolves the user's choice, and the
+ * phone model, to a model id). Asking for a different model unloads the current one first.
+ */
+export function createModelRuntime(extensionUrl: string, report: (status: ServiceStatus) => void): ModelRuntime {
+  let current: { modelId: string; service: ModelService } | null = null;
+  const serviceFor = (modelId: string) => {
+    if (current?.modelId !== modelId) {
+      void current?.service.dispose();
+      current = { modelId, service: createModelService(extensionUrl, modelId, report) };
+    }
+    return current.service;
+  };
+  return {
+    load: (modelId) => serviceFor(modelId).ensureLoaded(),
+    classify: (texts, modelId) => serviceFor(modelId).classify(texts),
+  };
+}
+
+export function createModelService(extensionUrl: string, modelId: string, report: (status: ServiceStatus) => void): ModelService {
   const ortBaseUrl = new URL('/ort/', extensionUrl).href;
   return new ModelService(async (report) => {
     const progress = (downloading: boolean) => {
@@ -27,28 +52,23 @@ export function createModelService(extensionUrl: string, report: (status: Servic
     if (__BUNDLED_MODEL__ || __MODEL_URL__) {
       const remote = !__BUNDLED_MODEL__;
       const modelBaseUrl = remote ? __MODEL_URL__ : new URL(`/${BUNDLED_MODEL_DIR}`, extensionUrl).href;
-      const modelId = usesLiteModel() ? LITE_MODEL_ID : MODEL_ID;
       const downloading = remote && !(await hostedModelCached(modelBaseUrl, modelId));
       return loadInPlaceClassifier({ modelBaseUrl, remote, ortBaseUrl, modelId, onProgress: progress(downloading) });
     }
 
-    const downloading = (await cachedModelFileCount()) < MODEL_FILE_COUNT;
+    const downloading = (await cachedModelFileCount(modelId)) < MODEL_FILE_COUNT;
     const onPercent = progress(downloading);
     return loadToxicityClassifier({
       ortBaseUrl,
+      modelId,
       onProgress: (p) => {
         if (p.status === 'progress_total') onPercent(Math.floor(p.progress));
       },
     });
-  }, report, isPhone() ? PHONE_BATCH_SIZE : BATCH_SIZE);
+  }, report, isPhone() ? PHONE_BATCH_SIZE : BATCH_SIZE, isPhone() ? PHONE_CACHE_LIMIT : CACHE_LIMIT);
 }
 
 /** Firefox for Android (also readable inside the model worker, which has no extension APIs). */
 export function isPhone(): boolean {
   return /Android/i.test(navigator.userAgent);
-}
-
-/** Phones run the trimmed model when this build has it (wxt.config.ts). */
-export function usesLiteModel(): boolean {
-  return __LITE_MODEL__ && isPhone();
 }

@@ -20,7 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import puppeteer from 'puppeteer';
-import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, HOSTED_MODEL_URL, LITE_MODEL_ID, MODEL_ID } from '../src/adapters/inference/model';
+import { BUNDLED_MODEL_DIR, BUNDLED_MODEL_FILE, DISTILBERT_LITE_MODEL_ID, DISTILBERT_MODEL_ID, HOSTED_MODEL_URL, LITE_MODEL_ID, MODEL_ID } from '../src/adapters/inference/model';
 
 const root = join(import.meta.dirname, '..');
 const output = join(root, '.output');
@@ -32,9 +32,13 @@ const modelUrl = process.env.WXT_MODEL_URL ?? HOSTED_MODEL_URL;
 const modelDir = join(root, 'public', BUNDLED_MODEL_DIR, MODEL_ID);
 // Hosted builds load the phone model from the same host (wxt.config.ts), so it must be built and hosted too.
 const liteDir = join(root, 'public', BUNDLED_MODEL_DIR, LITE_MODEL_ID);
+const distilbertLiteDir = join(root, 'public', BUNDLED_MODEL_DIR, DISTILBERT_LITE_MODEL_ID);
+// …and the DistilBERT model, the default choice.
+const distilbertDir = join(root, 'public', BUNDLED_MODEL_DIR, DISTILBERT_MODEL_ID);
 
-if (!existsSync(join(modelDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:build` first.');
-if (!existsSync(join(liteDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:trim` first: it builds the phone model.');
+if (!existsSync(join(modelDir, BUNDLED_MODEL_FILE)) || !existsSync(join(distilbertDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:build` first.');
+if (!existsSync(join(liteDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:trim` first: it builds the toxicity phone model.');
+if (!existsSync(join(distilbertLiteDir, BUNDLED_MODEL_FILE))) throw new Error('Run `npm run model:trim -- distilbert` first: it builds the DistilBERT phone model.');
 if (!bundled) await checkHost();
 
 // wxt zip builds, then zips each browser's folder with manifest.json at the root.
@@ -93,7 +97,7 @@ for (const line of sums) console.log(`  ${line}`);
  */
 async function checkHost(): Promise<void> {
   if (!modelUrl.endsWith('/')) throw new Error(`The model URL must end with "/": ${modelUrl}`);
-  for (const [id, dir] of [[MODEL_ID, modelDir], [LITE_MODEL_ID, liteDir]] as const) for (const file of readdirSync(dir)) {
+  for (const [id, dir] of [[DISTILBERT_MODEL_ID, distilbertDir], [MODEL_ID, modelDir], [LITE_MODEL_ID, liteDir], [DISTILBERT_LITE_MODEL_ID, distilbertLiteDir]] as const) for (const file of readdirSync(dir)) {
     const local = readFileSync(join(dir, file));
     const url = `${modelUrl}${id}/${file}`;
     const response = await fetch(url, { headers: { origin: 'chrome-extension://release-check' } });
